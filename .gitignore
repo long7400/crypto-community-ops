@@ -159,3 +159,4 @@ elizadb
 dist/
 .eliza
 /.spectra.yaml
+/.elizadb-test/
