@@ -64,7 +64,7 @@ interface CrossOrgReport {
   };
 }
 
-type ReportType = 'DAILY' | 'WEEKLY' | 'TOPIC_SPECIFIC';
+type ReportType = "DAILY" | "WEEKLY" | "TOPIC_SPECIFIC";
 ```
 
 ### Configuration
@@ -83,8 +83,8 @@ interface OrgConfig {
 const config: OnboardingConfig = {
   settings: {
     ORGANIZATIONS: {
-      name: 'Monitored Organizations',
-      description: 'List of channels to monitor and their preferences',
+      name: "Monitored Organizations",
+      description: "List of channels to monitor and their preferences",
       required: true,
       public: true,
       secret: false,

@@ -1,29 +1,33 @@
-import { type UUID } from '@elizaos/core';
+import { type UUID } from "@elizaos/core";
 
 // Define the days of the week for availability
 export type WeekDay =
-  | 'Monday'
-  | 'Tuesday'
-  | 'Wednesday'
-  | 'Thursday'
-  | 'Friday'
-  | 'Saturday'
-  | 'Sunday';
+  | "Monday"
+  | "Tuesday"
+  | "Wednesday"
+  | "Thursday"
+  | "Friday"
+  | "Saturday"
+  | "Sunday";
 
 // Define employment status types
-export type EmploymentStatus = 'FULL_TIME' | 'PART_TIME' | 'FREELANCE' | 'NONE';
+export type EmploymentStatus = "FULL_TIME" | "PART_TIME" | "FREELANCE" | "NONE";
 
 // Define report types
-export type ReportType = 'DAILY' | 'WEEKLY' | 'MONTHLY';
+export type ReportType = "DAILY" | "WEEKLY" | "MONTHLY";
 
 // Define task status types
-export type TaskStatus = 'NOT_STARTED' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED';
+export type TaskStatus =
+  | "NOT_STARTED"
+  | "IN_PROGRESS"
+  | "BLOCKED"
+  | "COMPLETED";
 
 // Define task priority levels
-export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 
 // Define platform types for multi-platform support
-export type PlatformType = 'DISCORD' | 'TELEGRAM' | 'SLACK' | 'EMAIL';
+export type PlatformType = "DISCORD" | "TELEGRAM" | "SLACK" | "EMAIL";
 
 /**
  * Interface for team member availability
@@ -105,7 +109,7 @@ export interface Project {
   targetEndDate?: string; // ISO date format
   actualEndDate?: string; // ISO date format
   client?: string;
-  status: 'PLANNING' | 'ACTIVE' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
+  status: "PLANNING" | "ACTIVE" | "ON_HOLD" | "COMPLETED" | "CANCELLED";
   createdAt: string; // ISO date format
   updatedAt: string; // ISO date format
 }
@@ -169,13 +173,13 @@ export interface Report {
   progressMetrics: {
     completionPercentage: number;
     tasksCompletedSinceLastReport: number;
-    onTrackStatus: 'ON_TRACK' | 'AT_RISK' | 'DELAYED';
+    onTrackStatus: "ON_TRACK" | "AT_RISK" | "DELAYED";
   };
   teamMemberSummaries: TeamMemberSummary[];
   milestoneUpdates?: {
     milestoneId: UUID;
     title: string;
-    status: 'NOT_STARTED' | 'IN_PROGRESS' | 'COMPLETED';
+    status: "NOT_STARTED" | "IN_PROGRESS" | "COMPLETED";
     dueDate: string; // ISO date format
     completionPercentage: number;
   }[];
@@ -190,5 +194,5 @@ export interface CheckInStatus {
   lastCheckInDate?: string; // ISO date format
   nextCheckInDue: string; // ISO date format
   remindersSent: number;
-  status: 'PENDING' | 'COMPLETED' | 'MISSED';
+  status: "PENDING" | "COMPLETED" | "MISSED";
 }

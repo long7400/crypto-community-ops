@@ -1,8 +1,9 @@
-import { Service, IAgentRuntime } from '@elizaos/core';
+import { Service, IAgentRuntime } from "@elizaos/core";
 
 export class LoadTestService extends Service {
-  static serviceType = 'load-test';
-  capabilityDescription = 'Provides load testing capabilities for agent scaling tests';
+  static serviceType = "load-test";
+  capabilityDescription =
+    "Provides load testing capabilities for agent scaling tests";
 
   private activeTests: Map<
     string,

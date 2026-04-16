@@ -42,6 +42,7 @@
     "@elizaos/plugin-discord": "^1.0.10",
     "@elizaos/plugin-groq": "^1.0.4",
     "@elizaos/plugin-openai": "^1.0.6",
+    "@elizaos/plugin-openrouter": "1.5.17",
     "@elizaos/plugin-pdf": "^1.0.1",
     "@elizaos/plugin-solana": "^1.0.3",
     "@elizaos/plugin-sql": "^1.0.19",

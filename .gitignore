@@ -158,3 +158,7 @@ tmp/
 elizadb
 dist/
 .eliza
+.spectra/
+openspec/.vector-search.db*
+/.elizadb-test/
+/.agents/
