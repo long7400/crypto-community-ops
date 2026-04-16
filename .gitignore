@@ -158,3 +158,4 @@ tmp/
 elizadb
 dist/
 .eliza
+/.spectra.yaml
