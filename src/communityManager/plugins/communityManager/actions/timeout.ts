@@ -9,8 +9,11 @@ import {
   logger,
   ModelType,
   composePromptFromState,
-} from '@elizaos/core';
-import { type PermissionsBitField, getPermissionsBitField } from '../../../../utils/discordHelper';
+} from "@elizaos/core";
+import {
+  type PermissionsBitField,
+  getPermissionsBitField,
+} from "../../../../utils/discordHelper";
 
 export const getTimeoutUserTemplate = (thoughts?: string) => {
   return `
@@ -58,7 +61,7 @@ Or respond with:
 
 if no one should be timed out.
 
-${thoughts ? `\n# Prior Thoughts\n${thoughts}` : ''}
+${thoughts ? `\n# Prior Thoughts\n${thoughts}` : ""}
 
 # Conversation
 
@@ -69,13 +72,16 @@ ${thoughts ? `\n# Prior Thoughts\n${thoughts}` : ''}
 const getTargetUserFromMessages = async (
   runtime: IAgentRuntime,
   state: State,
-  responses?: Memory[]
-): Promise<{ targetEntityId: string | null; timeoutDuration: number | null }> => {
+  responses?: Memory[],
+): Promise<{
+  targetEntityId: string | null;
+  timeoutDuration: number | null;
+}> => {
   const thoughtSnippets =
     responses
       ?.map((res) => res.content?.thought)
       .filter(Boolean)
-      .join('\n') ?? '';
+      .join("\n") ?? "";
 
   const prompt = composePromptFromState({
     state,
@@ -92,7 +98,7 @@ const getTargetUserFromMessages = async (
   try {
     const parsed = JSON.parse(jsonString.trim());
 
-    if (!parsed.id || parsed.id.toLowerCase() === 'none') {
+    if (!parsed.id || parsed.id.toLowerCase() === "none") {
       return { targetEntityId: null, timeoutDuration: null };
     }
 
@@ -102,7 +108,7 @@ const getTargetUserFromMessages = async (
     };
   } catch (err) {
     logger.warn(
-      `[TIMEOUT_USER] Failed to parse LLM timeout JSON response: ${err} Raw output: ${response}`
+      `[TIMEOUT_USER] Failed to parse LLM timeout JSON response: ${err} Raw output: ${response}`,
     );
     return { targetEntityId: null, timeoutDuration: null };
   }
@@ -123,8 +129,8 @@ const getTimeoutTarget = async ({ runtime, state, responses }) => {
 const logModerationMemory = async (
   runtime: IAgentRuntime,
   message: Memory,
-  source: 'discord' | 'telegram',
-  thought: string
+  source: "discord" | "telegram",
+  thought: string,
 ) => {
   await runtime.createMemory(
     {
@@ -134,73 +140,101 @@ const logModerationMemory = async (
       content: {
         source,
         thought,
-        actions: ['TIMEOUT_USER'],
+        actions: ["TIMEOUT_USER"],
       },
-      metadata: { type: 'MODERATION' },
+      metadata: { type: "MODERATION" },
     },
-    'messages'
+    "messages",
   );
 };
 
-const handleDiscordTimeout = async (params: PlatformHandlerParams): Promise<boolean> => {
+const handleDiscordTimeout = async (
+  params: PlatformHandlerParams,
+): Promise<boolean> => {
   const { runtime, message, state, callback, responses } = params;
   const room = state.data.room ?? (await runtime.getRoom(message.roomId));
   const serverId = room?.serverId;
   if (!serverId) return false;
 
-  const client = runtime.getService('discord') as any;
+  const client = runtime.getService("discord") as any;
   const guild = client.client.guilds.cache.get(serverId);
   if (!guild) return false;
 
   const PermissionsBitFieldClass = await getPermissionsBitField();
 
-  if (!guild.members.me?.permissions.has(PermissionsBitFieldClass.Flags.ModerateMembers)) {
+  if (
+    !guild.members.me?.permissions.has(
+      PermissionsBitFieldClass.Flags.ModerateMembers,
+    )
+  ) {
     await callback({
       text: `Missing **Moderate Members** permission.`,
-      source: 'discord',
+      source: "discord",
     });
     return false;
   }
 
-  const { targetEntityId, timeoutDuration } = await getTimeoutTarget({ runtime, state, responses });
+  const { targetEntityId, timeoutDuration } = await getTimeoutTarget({
+    runtime,
+    state,
+    responses,
+  });
   if (!targetEntityId || !timeoutDuration) return false;
 
-  const entity = await (runtime as any).adapter.getEntityById(targetEntityId).catch(() => null);
+  const entity = await (runtime as any).adapter
+    .getEntityById(targetEntityId)
+    .catch(() => null);
   const username = entity?.metadata?.discord?.userName;
   if (!username) return false;
 
   const member = guild.members.cache.find(
-    (m) => m.user.username.toLowerCase() === username.toLowerCase()
+    (m) => m.user.username.toLowerCase() === username.toLowerCase(),
   );
   if (!member) return false;
 
   try {
-    await member.timeout(timeoutDuration * 1000, 'Inappropriate behavior');
-    await logModerationMemory(runtime, message, 'discord', `${member.displayName} was timed out.`);
+    await member.timeout(timeoutDuration * 1000, "Inappropriate behavior");
+    await logModerationMemory(
+      runtime,
+      message,
+      "discord",
+      `${member.displayName} was timed out.`,
+    );
     return true;
   } catch (err) {
-    await callback({ text: `Failed to timeout ${member.displayName}`, source: 'discord' });
+    await callback({
+      text: `Failed to timeout ${member.displayName}`,
+      source: "discord",
+    });
     return false;
   }
 };
 
-const handleTelegramTimeout = async (params: PlatformHandlerParams): Promise<boolean> => {
+const handleTelegramTimeout = async (
+  params: PlatformHandlerParams,
+): Promise<boolean> => {
   const { runtime, message, state, callback, responses } = params;
   const room = state.data.room ?? (await runtime.getRoom(message.roomId));
   const chatId = room?.serverId;
   if (!chatId) return false;
 
-  const { targetEntityId, timeoutDuration } = await getTimeoutTarget({ runtime, state, responses });
+  const { targetEntityId, timeoutDuration } = await getTimeoutTarget({
+    runtime,
+    state,
+    responses,
+  });
   if (!targetEntityId || !timeoutDuration) return false;
 
-  const entity = await (runtime as any).adapter.getEntityById(targetEntityId).catch(() => null);
+  const entity = await (runtime as any).adapter
+    .getEntityById(targetEntityId)
+    .catch(() => null);
   const tgUserId = entity?.metadata?.telegram?.id;
   if (!tgUserId) return false;
 
   const untilDate = Math.floor(Date.now() / 1000) + timeoutDuration;
 
   try {
-    const telegramClient = runtime.getService('telegram') as any;
+    const telegramClient = runtime.getService("telegram") as any;
     await telegramClient.bot.telegram.restrictChatMember(chatId, tgUserId, {
       permissions: {
         can_send_messages: false,
@@ -218,22 +252,26 @@ const handleTelegramTimeout = async (params: PlatformHandlerParams): Promise<boo
     await logModerationMemory(
       runtime,
       message,
-      'telegram',
-      `User was restricted for inappropriate behavior.`
+      "telegram",
+      `User was restricted for inappropriate behavior.`,
     );
     return true;
   } catch (err) {
-    await callback({ text: `Failed to restrict user`, source: 'telegram' });
+    await callback({ text: `Failed to restrict user`, source: "telegram" });
     return false;
   }
 };
 
 export const timeoutUser: Action = {
-  name: 'TIMEOUT_USER',
-  similes: ['TIMEOUT_USER', 'MODERATION_TIMEOUT', 'FUD_TIMEOUT'],
-  description: 'Timeout users who are spreading FUD, spamming, or using inappropriate language.',
+  name: "TIMEOUT_USER",
+  similes: ["TIMEOUT_USER", "MODERATION_TIMEOUT", "FUD_TIMEOUT"],
+  description:
+    "Timeout users who are spreading FUD, spamming, or using inappropriate language.",
   validate: async (runtime, message, state: State | undefined) => {
-    if (message.content.source !== 'discord' && message.content.source !== 'telegram') {
+    if (
+      message.content.source !== "discord" &&
+      message.content.source !== "telegram"
+    ) {
       return false;
     }
     if (!state) return false;
@@ -246,7 +284,7 @@ export const timeoutUser: Action = {
     state: State | undefined,
     _options: any,
     callback: HandlerCallback | undefined,
-    responses?: Memory[]
+    responses?: Memory[],
   ): Promise<boolean> => {
     if (!state) return false;
     const source = message.content.source;
@@ -258,83 +296,83 @@ export const timeoutUser: Action = {
       responses,
     };
 
-    if (source === 'discord') return await handleDiscordTimeout(params);
-    if (source === 'telegram') return await handleTelegramTimeout(params);
+    if (source === "discord") return await handleDiscordTimeout(params);
+    if (source === "telegram") return await handleTelegramTimeout(params);
     return false; // Default return for when source is neither discord nor telegram
   },
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'this coin is a scam lol get out now',
+          text: "this coin is a scam lol get out now",
         },
       },
       {
-        name: '{{botName}}',
+        name: "{{botName}}",
         content: {
-          text: '{{name1}} has been timed out for FUD.',
-          actions: ['TIMEOUT_USER'],
+          text: "{{name1}} has been timed out for FUD.",
+          actions: ["TIMEOUT_USER"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
           text: "fuck this project it's going to zero",
         },
       },
       {
-        name: '{{botName}}',
+        name: "{{botName}}",
         content: {
-          text: '{{name1}} has been muted for 10 minutes.',
-          actions: ['TIMEOUT_USER'],
+          text: "{{name1}} has been muted for 10 minutes.",
+          actions: ["TIMEOUT_USER"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
           text: "I'm done with this crap — total rug",
         },
       },
       {
-        name: '{{botName}}',
+        name: "{{botName}}",
         content: {
-          text: '{{name1}} has been timed out for aggressive messaging.',
-          actions: ['TIMEOUT_USER'],
+          text: "{{name1}} has been timed out for aggressive messaging.",
+          actions: ["TIMEOUT_USER"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
           text: "absolute garbage project, can't believe people buy this",
         },
       },
       {
-        name: '{{botName}}',
+        name: "{{botName}}",
         content: {
-          text: '{{name1}} was muted for spreading toxicity.',
-          actions: ['TIMEOUT_USER'],
+          text: "{{name1}} was muted for spreading toxicity.",
+          actions: ["TIMEOUT_USER"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'devs are lazy af — still no update',
+          text: "devs are lazy af — still no update",
         },
       },
       {
-        name: '{{botName}}',
+        name: "{{botName}}",
         content: {
-          text: '{{name1}} has been timed out for disrespectful language.',
-          actions: ['TIMEOUT_USER'],
+          text: "{{name1}} has been timed out for disrespectful language.",
+          actions: ["TIMEOUT_USER"],
         },
       },
     ],

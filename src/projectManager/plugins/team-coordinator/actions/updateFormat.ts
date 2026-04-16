@@ -1,13 +1,25 @@
 import {
   type Action,
+  createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  createUniqueUuid,
   type UUID,
-  logger,
-} from '@elizaos/core';
+} from "@elizaos/core";
+
+interface EntityPlatformMetadata {
+  metadata?: {
+    discord?: {
+      userName?: string;
+    };
+    telegram?: {
+      userName?: string;
+      username?: string;
+    };
+  };
+}
 
 interface TeamMember {
   section: string;
@@ -28,27 +40,39 @@ interface TeamMember {
  */
 function getStorageRoomId(runtime: IAgentRuntime, serverId: string): UUID {
   // Create a consistent hash based on serverId
-  const serverHash = serverId.replace(/[^a-zA-Z0-9]/g, '');
+  const serverHash = serverId.replace(/[^a-zA-Z0-9]/g, "");
   return createUniqueUuid(runtime, `store-team-members-${serverHash}`);
 }
 
 export const updatesFormatAction: Action = {
-  name: 'UPDATES_FORMAT',
-  description: 'Show the updates format for a specific team member.',
-  similes: ['UPDATES_FORMAT', 'SHOW_FORMAT', 'GET_FORMAT', 'MY_FORMAT', 'VIEW_FORMAT'],
-  validate: async (runtime: IAgentRuntime, message: Memory, state: State | undefined): Promise<boolean> => {
+  name: "UPDATES_FORMAT",
+  description: "Show the updates format for a specific team member.",
+  similes: [
+    "UPDATES_FORMAT",
+    "SHOW_FORMAT",
+    "GET_FORMAT",
+    "MY_FORMAT",
+    "VIEW_FORMAT",
+  ],
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State | undefined,
+  ): Promise<boolean> => {
     try {
       if (!state) return false;
-      
+
       // Store the user ID in state for the handler
       state.data.userId = message.entityId;
 
-      logger.info(`Valid request to get updates format for user ${message.entityId}`);
+      logger.info(
+        `Valid request to get updates format for user ${message.entityId}`,
+      );
       return true;
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error('Error in updatesFormatAction validation:', err);
-      logger.error(`Error stack: ${err.stack || 'No stack trace available'}`);
+      logger.error("Error in updatesFormatAction validation:", err);
+      logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
       return false;
     }
   },
@@ -57,39 +81,43 @@ export const updatesFormatAction: Action = {
     message: Memory,
     state: State | undefined,
     options: Record<string, unknown> = {},
-    callback?: HandlerCallback
+    callback?: HandlerCallback,
   ): Promise<boolean> => {
     try {
-      logger.info('=== UPDATES-FORMAT HANDLER START ===');
+      logger.info("=== UPDATES-FORMAT HANDLER START ===");
 
       if (!state) return false;
       if (!callback) {
-        logger.warn('No callback function provided');
+        logger.warn("No callback function provided");
         return false;
       }
 
-      const entityById = await runtime.getEntityById(message.entityId);
+      const entityById = (await runtime.getEntityById(
+        message.entityId,
+      )) as EntityPlatformMetadata | null;
 
       const username =
-        entityById?.metadata?.discord?.userName || entityById?.metadata?.telegram?.userName;
+        entityById?.metadata?.discord?.userName ||
+        entityById?.metadata?.telegram?.userName ||
+        entityById?.metadata?.telegram?.username;
 
       // Log the telegram and discord metadata for debugging
       logger.info(
-        'Entity metadata - Telegram:',
-        JSON.stringify(entityById?.metadata?.telegram || 'Not available')
+        "Entity metadata - Telegram:",
+        JSON.stringify(entityById?.metadata?.telegram || "Not available"),
       );
       logger.info(
-        'Entity metadata - Discord:',
-        JSON.stringify(entityById?.metadata?.discord || 'Not available')
+        "Entity metadata - Discord:",
+        JSON.stringify(entityById?.metadata?.discord || "Not available"),
       );
 
       if (!username) {
-        logger.error('No username found in state');
+        logger.error("No username found in state");
         await callback(
           {
-            text: '❌ Failed to identify your username. Please try again.',
+            text: "❌ Failed to identify your username. Please try again.",
           },
-          []
+          [],
         );
         return false;
       }
@@ -98,7 +126,7 @@ export const updatesFormatAction: Action = {
 
       // Get all memories using agentId since roomId is not available
       const allMemories = await runtime.getMemories({
-        tableName: 'messages',
+        tableName: "messages",
         agentId: runtime.agentId,
       });
 
@@ -106,10 +134,12 @@ export const updatesFormatAction: Action = {
 
       // Filter to get only team member configs
       const teamMemberConfigs = allMemories.filter(
-        (memory) => memory.content?.type === 'store-team-members-memory'
+        (memory) => memory.content?.type === "store-team-members-memory",
       );
 
-      logger.info(`Found ${teamMemberConfigs.length} team member config memories`);
+      logger.info(
+        `Found ${teamMemberConfigs.length} team member config memories`,
+      );
 
       // Initialize an empty array for all team members across all servers
       let allTeamMembers: TeamMember[] = [];
@@ -117,14 +147,18 @@ export const updatesFormatAction: Action = {
       // Extract all team members from all configs
       teamMemberConfigs.forEach((config) => {
         if (config.content?.config) {
-          const configData = config.content.config as { teamMembers: TeamMember[] };
+          const configData = config.content.config as {
+            teamMembers: TeamMember[];
+          };
           const teamMembers = configData.teamMembers || [];
           logger.info(`Found ${teamMembers.length} team members in config`);
           allTeamMembers = [...allTeamMembers, ...teamMembers];
         }
       });
 
-      logger.info(`Total of ${allTeamMembers.length} team members found across all servers`);
+      logger.info(
+        `Total of ${allTeamMembers.length} team members found across all servers`,
+      );
 
       // Log team members and username for debugging
       logger.info(
@@ -132,7 +166,7 @@ export const updatesFormatAction: Action = {
         allTeamMembers.map((member) => ({
           tgName: member.tgName,
           discordName: member.discordName,
-        }))
+        })),
       );
 
       // Try to find the team member by username
@@ -140,8 +174,9 @@ export const updatesFormatAction: Action = {
         (member) =>
           (member.tgName &&
             (member.tgName === username ||
-              member.tgName?.replace('@', '') === username.replace('@', ''))) ||
-          (member.discordName && member.discordName.replace('@', '') === username.replace('@', ''))
+              member.tgName?.replace("@", "") === username.replace("@", ""))) ||
+          (member.discordName &&
+            member.discordName.replace("@", "") === username.replace("@", "")),
       );
 
       if (!teamMember) {
@@ -150,7 +185,7 @@ export const updatesFormatAction: Action = {
           {
             text: `❌ No team member found with username ${username}. Please make sure you are registered as a team member.`,
           },
-          []
+          [],
         );
         return true;
       }
@@ -160,7 +195,7 @@ export const updatesFormatAction: Action = {
       // Format the response
       let responseText = `📋 **Updates Format for ${username}**\n\n`;
 
-      responseText += `Section: ${teamMember.section || 'Unassigned'}\n`;
+      responseText += `Section: ${teamMember.section || "Unassigned"}\n`;
 
       if (teamMember.updatesFormat && teamMember.updatesFormat.length > 0) {
         responseText += `\nYour updates should include the following fields:\n`;
@@ -184,23 +219,23 @@ export const updatesFormatAction: Action = {
         {
           text: responseText,
         },
-        []
+        [],
       );
 
-      logger.info('=== UPDATES-FORMAT HANDLER END ===');
+      logger.info("=== UPDATES-FORMAT HANDLER END ===");
       return true;
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error('=== UPDATES-FORMAT HANDLER ERROR ===');
+      logger.error("=== UPDATES-FORMAT HANDLER ERROR ===");
       logger.error(`Error processing updates format request: ${err}`);
-      logger.error(`Error stack: ${err.stack || 'No stack trace available'}`);
+      logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
 
       if (callback) {
         await callback(
           {
-            text: '❌ An unexpected error occurred while fetching your updates format. Please try again later.',
+            text: "❌ An unexpected error occurred while fetching your updates format. Please try again later.",
           },
-          []
+          [],
         );
       }
       return false;
@@ -209,46 +244,46 @@ export const updatesFormatAction: Action = {
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'What is my updates format?',
+          text: "What is my updates format?",
         },
       },
       {
-        name: '{{botName}}',
+        name: "{{botName}}",
         content: {
           text: "I'll show you your updates format",
-          actions: ['UPDATES_FORMAT'],
+          actions: ["UPDATES_FORMAT"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Show me my updates format',
+          text: "Show me my updates format",
         },
       },
       {
-        name: '{{botName}}',
+        name: "{{botName}}",
         content: {
-          text: 'Let me fetch your updates format',
-          actions: ['UPDATES_FORMAT'],
+          text: "Let me fetch your updates format",
+          actions: ["UPDATES_FORMAT"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'How should I format my updates?',
+          text: "How should I format my updates?",
         },
       },
       {
-        name: '{{botName}}',
+        name: "{{botName}}",
         content: {
           text: "I'll get the format for your updates",
-          actions: ['UPDATES_FORMAT'],
+          actions: ["UPDATES_FORMAT"],
         },
       },
     ],

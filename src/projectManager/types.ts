@@ -2,21 +2,25 @@
  * Type definitions for Project Manager
  */
 
-import { UUID } from '@elizaos/core';
+import { UUID } from "@elizaos/core";
 
 // Team member enums
 export type WeekDay =
-  | 'MONDAY'
-  | 'TUESDAY'
-  | 'WEDNESDAY'
-  | 'THURSDAY'
-  | 'FRIDAY'
-  | 'SATURDAY'
-  | 'SUNDAY';
+  | "MONDAY"
+  | "TUESDAY"
+  | "WEDNESDAY"
+  | "THURSDAY"
+  | "FRIDAY"
+  | "SATURDAY"
+  | "SUNDAY";
 
-export type EmploymentStatus = 'FULL_TIME' | 'PART_TIME' | 'CONTRACTOR' | 'INTERN';
+export type EmploymentStatus =
+  | "FULL_TIME"
+  | "PART_TIME"
+  | "CONTRACTOR"
+  | "INTERN";
 
-export type PlatformType = 'DISCORD' | 'SLACK' | 'TELEGRAM' | 'EMAIL';
+export type PlatformType = "DISCORD" | "SLACK" | "TELEGRAM" | "EMAIL";
 
 export type Skill = string;
 
@@ -48,11 +52,21 @@ export interface TeamMember {
 }
 
 // Project status types
-export type ProjectStatus = 'PLANNING' | 'IN_PROGRESS' | 'ON_HOLD' | 'COMPLETED' | 'CANCELLED';
+export type ProjectStatus =
+  | "PLANNING"
+  | "IN_PROGRESS"
+  | "ON_HOLD"
+  | "COMPLETED"
+  | "CANCELLED";
 
-export type TaskStatus = 'TODO' | 'IN_PROGRESS' | 'BLOCKED' | 'COMPLETED' | 'CANCELLED';
+export type TaskStatus =
+  | "TODO"
+  | "IN_PROGRESS"
+  | "BLOCKED"
+  | "COMPLETED"
+  | "CANCELLED";
 
-export type TaskPriority = 'LOW' | 'MEDIUM' | 'HIGH' | 'URGENT';
+export type TaskPriority = "LOW" | "MEDIUM" | "HIGH" | "URGENT";
 
 // Task interface
 export interface Task {
@@ -108,7 +122,7 @@ export interface Project {
 }
 
 // Daily update types
-export type UpdateType = 'CHECK_IN' | 'STATUS_UPDATE' | 'BLOCKER_REPORT';
+export type UpdateType = "CHECK_IN" | "STATUS_UPDATE" | "BLOCKER_REPORT";
 
 // Daily update interface
 export interface DailyUpdate {
@@ -124,7 +138,7 @@ export interface DailyUpdate {
 }
 
 export interface TeamMemberUpdate {
-  type: 'team-member-update';
+  type: "team-member-update";
   updateId: UUID;
   teamMemberId: UUID;
   teamMemberName?: string;
@@ -137,13 +151,19 @@ export interface TeamMemberUpdate {
 }
 
 export interface CheckInSchedule {
-  type: 'team-member-checkin-schedule';
+  type: "team-member-checkin-schedule";
   scheduleId: string;
   teamMemberName?: string | undefined | null;
   teamMemberUserName?: string;
   checkInType: string;
   channelId: string;
-  frequency: 'WEEKDAYS' | 'DAILY' | 'WEEKLY' | 'BIWEEKLY' | 'MONTHLY' | 'CUSTOM';
+  frequency:
+    | "WEEKDAYS"
+    | "DAILY"
+    | "WEEKLY"
+    | "BIWEEKLY"
+    | "MONTHLY"
+    | "CUSTOM";
   checkInTime: string; // Time in "HH:mm" format
   createdAt: string;
   source?: string; // Add source field to track where the message came from

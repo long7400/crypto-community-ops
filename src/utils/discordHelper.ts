@@ -17,7 +17,7 @@ export type {
   ModalSubmitInteraction,
   SlashCommandBuilder,
   PermissionsBitField,
-} from 'discord.js';
+} from "discord.js";
 
 // Create a lazy loader for anything that's not just a type
 let discordJsImport: any = null;
@@ -29,20 +29,23 @@ export async function getDiscordJs() {
   if (!discordJsImport) {
     try {
       // Try to import discord.js normally
-      discordJsImport = await import('discord.js');
+      discordJsImport = await import("discord.js");
     } catch (error) {
-      console.error('Error importing discord.js, trying fallback method:', error);
+      console.error(
+        "Error importing discord.js, trying fallback method:",
+        error,
+      );
 
       // If that fails (e.g., due to node: protocol issues), use a workaround
       // This assumes the discord.js package is installed in node_modules
       try {
         // Use the 'module' package to create a require function
-        const { createRequire } = await import('module');
+        const { createRequire } = await import("module");
         const require = createRequire(import.meta.url);
-        discordJsImport = require('discord.js');
+        discordJsImport = require("discord.js");
       } catch (fallbackError) {
-        console.error('Discord.js fallback import also failed:', fallbackError);
-        throw new Error('Failed to import discord.js: ' + fallbackError);
+        console.error("Discord.js fallback import also failed:", fallbackError);
+        throw new Error("Failed to import discord.js: " + fallbackError);
       }
     }
   }

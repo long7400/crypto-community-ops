@@ -38,13 +38,13 @@ interface TeamMember {
   name: string;
   availability: {
     workDays: (
-      | 'Monday'
-      | 'Tuesday'
-      | 'Wednesday'
-      | 'Thursday'
-      | 'Friday'
-      | 'Saturday'
-      | 'Sunday'
+      | "Monday"
+      | "Tuesday"
+      | "Wednesday"
+      | "Thursday"
+      | "Friday"
+      | "Saturday"
+      | "Sunday"
     )[];
     workHours: {
       start: string; // HH:MM format
@@ -52,7 +52,7 @@ interface TeamMember {
     };
     timeZone: string; // e.g., "America/Los_Angeles"
     hoursPerWeek: number;
-    employmentStatus: 'FULL_TIME' | 'PART_TIME' | 'FREELANCE' | 'NONE';
+    employmentStatus: "FULL_TIME" | "PART_TIME" | "FREELANCE" | "NONE";
   };
 }
 
@@ -66,7 +66,7 @@ interface DailyUpdate {
 
 interface Report {
   id: UUID;
-  type: 'DAILY' | 'WEEKLY';
+  type: "DAILY" | "WEEKLY";
   projectId: UUID;
   generatedAt: string;
   summary: string;
@@ -97,14 +97,14 @@ interface TeamMemberConfig {
   };
   timeZone: string;
   hoursPerWeek: number;
-  employmentStatus: 'FULL_TIME' | 'PART_TIME' | 'FREELANCE' | 'NONE';
+  employmentStatus: "FULL_TIME" | "PART_TIME" | "FREELANCE" | "NONE";
 }
 
 const config: OnboardingConfig = {
   settings: {
     PROJECTS: {
-      name: 'Projects',
-      description: 'List of projects to manage',
+      name: "Projects",
+      description: "List of projects to manage",
       required: true,
       public: true,
       secret: false,
@@ -112,8 +112,8 @@ const config: OnboardingConfig = {
       validation: (value: ProjectConfig[]) => Array.isArray(value),
     },
     TEAM: {
-      name: 'Team Members',
-      description: 'List of team members',
+      name: "Team Members",
+      description: "List of team members",
       required: true,
       public: true,
       secret: false,
@@ -121,12 +121,12 @@ const config: OnboardingConfig = {
       validation: (value: TeamMemberConfig[]) => Array.isArray(value),
     },
     REPORT_CHANNEL: {
-      name: 'Report Channel',
-      description: 'Discord channel for reports (DMs if not specified)',
+      name: "Report Channel",
+      description: "Discord channel for reports (DMs if not specified)",
       required: false,
       public: true,
       secret: false,
-      validation: (value: string) => typeof value === 'string',
+      validation: (value: string) => typeof value === "string",
     },
   },
 };
@@ -136,17 +136,18 @@ const config: OnboardingConfig = {
 
 ```typescript
 const character: Character = {
-  name: 'Jimmy',
+  name: "Jimmy",
   plugins: [
-    '@elizaos/plugin-anthropic',
-    '@elizaos/plugin-openai',
-    '@elizaos/plugin-discord',
-    '@elizaos/plugin-node',
-    '@elizaos/plugin-sql',
+    "@elizaos/plugin-anthropic",
+    "@elizaos/plugin-openai",
+    "@elizaos/plugin-discord",
+    "@elizaos/plugin-node",
+    "@elizaos/plugin-sql",
   ],
   settings: {
     secrets: {
-      DISCORD_APPLICATION_ID: process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
+      DISCORD_APPLICATION_ID:
+        process.env.PROJECT_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.PROJECT_MANAGER_DISCORD_API_TOKEN,
     },
   },

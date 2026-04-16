@@ -35,8 +35,8 @@ Eddy is an AI-powered developer support agent designed to help developers by pro
 const config: OnboardingConfig = {
   settings: {
     DOCUMENTATION_SOURCES: {
-      name: 'Documentation Sources',
-      description: 'List of documentation sources to index',
+      name: "Documentation Sources",
+      description: "List of documentation sources to index",
       required: true,
       public: true,
       secret: false,
@@ -44,13 +44,13 @@ const config: OnboardingConfig = {
       validation: (value: DocumentationConfig[]) => Array.isArray(value),
     },
     KNOWLEDGE_BASE: {
-      name: 'Knowledge Base Configuration',
-      description: 'Knowledge base settings and categories',
+      name: "Knowledge Base Configuration",
+      description: "Knowledge base settings and categories",
       required: true,
       public: true,
       secret: false,
       value: {} as KnowledgeBaseConfig,
-      validation: (value: KnowledgeBaseConfig) => typeof value === 'object',
+      validation: (value: KnowledgeBaseConfig) => typeof value === "object",
     },
   },
 };
