@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   asUUID,
   type Content,
   createUniqueUuid,
@@ -15,6 +16,19 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { TeamMemberUpdate } from "../../../types";
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function stringifyForLog(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
 
 interface EntityPlatformMetadata {
   metadata?: {
@@ -86,22 +100,24 @@ async function postUpdateToDiscordChannel(
 
     // Get report channel config
     const roomId = createUniqueUuid(runtime, "report-channel-config");
-    logger.info("Generated roomId for config:", roomId);
+    logger.info(`Generated roomId for config: ${roomId}`);
 
     const memories = await runtime.getMemories({
       roomId: roomId,
       tableName: "messages",
     });
 
-    logger.info("Retrieved report channel configs:", {
-      count: memories.length,
-      configs: memories.map((m) => ({
-        type: m.content?.type,
-        channelId: m.content?.config
-          ? (m.content.config as ReportChannelConfig).channelId
-          : undefined,
-      })),
-    });
+    logger.info(
+      `Retrieved report channel configs: ${stringifyForLog({
+        count: memories.length,
+        configs: memories.map((m) => ({
+          type: m.content?.type,
+          channelId: m.content?.config
+            ? (m.content.config as ReportChannelConfig).channelId
+            : undefined,
+        })),
+      })}`,
+    );
 
     // TODO : fetch server id of channel id
 
@@ -135,12 +151,14 @@ async function postUpdateToDiscordChannel(
       const configData = memory.content?.config as
         | ReportChannelConfig
         | undefined;
-      logger.info(`Checking config:`, {
-        configType: memory.content?.type,
-        configServerId: configData?.serverId,
-        targetGuildId: targetGuild ? targetGuild.id : undefined,
-        matches: serverMatch,
-      });
+      logger.info(
+        `Checking config: ${stringifyForLog({
+          configType: memory.content?.type,
+          configServerId: configData?.serverId,
+          targetGuildId: targetGuild ? targetGuild.id : undefined,
+          matches: serverMatch,
+        })}`,
+      );
       return memory.content?.type === "report-channel-config" && serverMatch;
     });
 
@@ -152,12 +170,14 @@ async function postUpdateToDiscordChannel(
     }
 
     const configData = config.content.config as ReportChannelConfig;
-    logger.info("Found report channel config:", {
-      configId: config.id,
-      configType: config.content?.type,
-      configServerId: targetGuild.id,
-      configChannelId: configData?.channelId,
-    });
+    logger.info(
+      `Found report channel config: ${stringifyForLog({
+        configId: config.id,
+        configType: config.content?.type,
+        configServerId: targetGuild.id,
+        configChannelId: configData?.channelId,
+      })}`,
+    );
 
     const channelId = configData?.channelId;
     if (!channelId) {
@@ -167,10 +187,12 @@ async function postUpdateToDiscordChannel(
 
     // Format the update message with all answers from the stringified JSON
     const formattedDate = new Date(update.timestamp).toLocaleString();
-    logger.info("Formatting update message with timestamp:", {
-      timestamp: update.timestamp,
-      formatted: formattedDate,
-    });
+    logger.info(
+      `Formatting update message with timestamp: ${stringifyForLog({
+        timestamp: update.timestamp,
+        formatted: formattedDate,
+      })}`,
+    );
 
     let updateMessage = `## Team Member Update
 **Team Member**: ${update.teamMemberName || "Unknown"} (${update.teamMemberId})
@@ -190,13 +212,13 @@ async function postUpdateToDiscordChannel(
         }
       }
     } catch (error) {
-      logger.error("Error parsing answers JSON:", error);
+      logger.error(`Error parsing answers JSON: ${toErrorMessage(error)}`);
       updateMessage += "\n\n**Update Details**: Error parsing update details";
     }
 
-    logger.info("Formatted update message:", {
-      messageLength: updateMessage.length,
-    });
+    logger.info(
+      `Formatted update message: ${stringifyForLog({ messageLength: updateMessage.length })}`,
+    );
 
     // Get Discord client
     const client = discordService.client;
@@ -236,11 +258,13 @@ async function postUpdateToDiscordChannel(
   } catch (error: unknown) {
     const err = error as Error;
     logger.error("=== POST TEAM MEMBER UPDATE TO DISCORD ERROR ===");
-    logger.error("Error details:", {
-      name: err.name || "Unknown",
-      message: err.message || "No message",
-      stack: err.stack || "No stack trace",
-    });
+    logger.error(
+      `Error details: ${stringifyForLog({
+        name: err.name || "Unknown",
+        message: err.message || "No message",
+        stack: err.stack || "No stack trace",
+      })}`,
+    );
     return false;
   }
 }
@@ -251,11 +275,13 @@ async function storeTeamMemberUpdate(
 ): Promise<boolean> {
   try {
     logger.info("=== STORE TEAM MEMBER UPDATE START ===");
-    logger.info("Storing update for team member:", {
-      teamMemberId: update.teamMemberId,
-      updateId: update.updateId,
-      timestamp: update.timestamp,
-    });
+    logger.info(
+      `Storing update for team member: ${stringifyForLog({
+        teamMemberId: update.teamMemberId,
+        updateId: update.updateId,
+        timestamp: update.timestamp,
+      })}`,
+    );
 
     // Use the existing room ID from the message instead of creating a new one
     // This resolves the foreign key constraint error
@@ -292,11 +318,13 @@ async function storeTeamMemberUpdate(
   } catch (error: unknown) {
     const err = error as Error;
     logger.error("=== STORE TEAM MEMBER UPDATE ERROR ===");
-    logger.error("Error details:", {
-      name: err.name || "Unknown",
-      message: err.message || "No message",
-      stack: err.stack || "No stack trace",
-    });
+    logger.error(
+      `Error details: ${stringifyForLog({
+        name: err.name || "Unknown",
+        message: err.message || "No message",
+        stack: err.stack || "No stack trace",
+      })}`,
+    );
     return false;
   }
 }
@@ -307,10 +335,12 @@ async function parseTeamMemberUpdate(
 ): Promise<TeamMemberUpdate | null> {
   try {
     logger.info("=== PARSE TEAM MEMBER UPDATE START ===");
-    logger.info("Parsing update from message:", {
-      messageId: message.id,
-      entityId: message.entityId,
-    });
+    logger.info(
+      `Parsing update from message: ${stringifyForLog({
+        messageId: message.id,
+        entityId: message.entityId,
+      })}`,
+    );
 
     const text = message.content?.text as string;
     if (!text) {
@@ -338,7 +368,7 @@ async function parseTeamMemberUpdate(
     Text to parse: "${text}"`;
 
     logger.info("Sending text to AI for parsing");
-    logger.info("Prompt:", prompt);
+    logger.info(`Prompt: ${prompt}`);
 
     const parsedResponse = await runtime.useModel(ModelType.TEXT_LARGE, {
       prompt,
@@ -354,19 +384,25 @@ async function parseTeamMemberUpdate(
         .replace(/```json\n?|\n?```/g, "")
         .trim();
       parsedData = JSON.parse(cleanedResponse);
-      logger.info("Successfully parsed fields from AI response:", parsedData);
+      logger.info(
+        `Successfully parsed fields from AI response: ${stringifyForLog(parsedData)}`,
+      );
     } catch (error) {
-      logger.error("Failed to parse AI response as JSON:", error);
-      logger.error("Raw response that failed parsing:", parsedResponse);
+      logger.error(
+        `Failed to parse AI response as JSON: ${toErrorMessage(error)}`,
+      );
+      logger.error(`Raw response that failed parsing: ${parsedResponse}`);
       throw new Error("PARSING_ERROR: AI response was not valid JSON");
     }
 
     // Validate minimal required fields
     if (!parsedData.serverName || !parsedData.checkInType) {
-      logger.warn("Missing required basic fields:", {
-        hasServerName: !!parsedData.serverName,
-        hasCheckInType: !!parsedData.checkInType,
-      });
+      logger.warn(
+        `Missing required basic fields: ${stringifyForLog({
+          hasServerName: !!parsedData.serverName,
+          hasCheckInType: !!parsedData.checkInType,
+        })}`,
+      );
       throw new Error(`MISSING_FIELDS:serverName,checkInType`);
     }
 
@@ -399,17 +435,21 @@ async function parseTeamMemberUpdate(
       answers: JSON.stringify(parsedData.answers),
     };
 
-    logger.info("Successfully parsed team member update:", update);
+    logger.info(
+      `Successfully parsed team member update: ${stringifyForLog(update)}`,
+    );
     logger.info("=== PARSE TEAM MEMBER UPDATE END ===");
     return update;
   } catch (error: unknown) {
     const err = error as Error;
     logger.error("=== PARSE TEAM MEMBER UPDATE ERROR ===");
-    logger.error("Error details:", {
-      name: err.name || "Unknown",
-      message: err.message || "No message",
-      stack: err.stack || "No stack trace",
-    });
+    logger.error(
+      `Error details: ${stringifyForLog({
+        name: err.name || "Unknown",
+        message: err.message || "No message",
+        stack: err.stack || "No stack trace",
+      })}`,
+    );
     throw error; // Propagate the error to handle it in the handler
   }
 }
@@ -434,31 +474,35 @@ export const teamMemberUpdatesAction: Action = {
     state: State | undefined,
     options: Record<string, unknown> = {},
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info("=== RECORD TEAM MEMBER UPDATES HANDLER START ===");
-      logger.info("Handler details:", {
-        messageId: message.id,
-        entityId: message.entityId,
-        hasCallback: !!callback,
-        stateKeys: state ? Object.keys(state) : [],
-        optionsKeys: Object.keys(options),
-      });
-      logger.info("Processing message:", {
-        id: message.id,
-        content: JSON.stringify(message.content),
-        entityId: message.entityId,
-        roomId: message.roomId,
-        timestamp: message.metadata?.timestamp,
-        text: message.content?.text,
-        type: message.content?.type,
-        metadata: JSON.stringify(message.metadata),
-        fullMessage: JSON.stringify(message),
-      });
+      logger.info(
+        `Handler details: ${stringifyForLog({
+          messageId: message.id,
+          entityId: message.entityId,
+          hasCallback: !!callback,
+          stateKeys: state ? Object.keys(state) : [],
+          optionsKeys: Object.keys(options),
+        })}`,
+      );
+      logger.info(
+        `Processing message: ${stringifyForLog({
+          id: message.id,
+          content: JSON.stringify(message.content),
+          entityId: message.entityId,
+          roomId: message.roomId,
+          timestamp: message.metadata?.timestamp,
+          text: message.content?.text,
+          type: message.content?.type,
+          metadata: JSON.stringify(message.metadata),
+          fullMessage: JSON.stringify(message),
+        })}`,
+      );
 
       if (!callback) {
         logger.warn("No callback function provided");
-        return false;
+        return { success: false, error: "No callback function provided" };
       }
 
       // Parse the update from the message
@@ -475,28 +519,25 @@ Blockers: [any blockers or "none"]
 
 End your message with "sending my updates"`;
 
-          await callback(
-            {
-              text: `❌ I was unable to process your update. ${template}`,
-              source: "discord",
-            },
-            [],
-          );
-          return false;
+          await callback({
+            text: `❌ I was unable to process your update. ${template}`,
+            source: "discord",
+          });
+          return { success: false, error: "Unable to process your update" };
         }
 
         // Store the update in memory
         const stored = await storeTeamMemberUpdate(runtime, update);
         if (!stored) {
           logger.error("Failed to store team member update");
-          await callback(
-            {
-              text: "❌ There was an error storing your update. Please try again later.",
-              source: "discord",
-            },
-            [],
-          );
-          return false;
+          await callback({
+            text: "❌ There was an error storing your update. Please try again later.",
+            source: "discord",
+          });
+          return {
+            success: false,
+            error: "Failed to store team member update",
+          };
         }
 
         // Post update to configured Discord channel
@@ -516,19 +557,18 @@ End your message with "sending my updates"`;
         };
 
         logger.info("Sending confirmation to user");
-        await callback(content, []);
+        await callback(content);
         logger.info("Successfully recorded team member update");
         logger.info("=== RECORD TEAM MEMBER UPDATES HANDLER END ===");
-        return true;
+        return { success: true };
       } catch (error: unknown) {
         const err = error as Error;
         if (err.message && err.message.startsWith("MISSING_FIELDS:")) {
           const missingFields = err.message.split(":")[1].split(",");
           const missingFieldsList = missingFields.join(", ");
 
-          await callback(
-            {
-              text: `❌ Your update is missing the following required fields: ${missingFieldsList}\n\nPlease include all required fields and try again:
+          await callback({
+            text: `❌ Your update is missing the following required fields: ${missingFieldsList}\n\nPlease include all required fields and try again:
 • Server-name
 • Check-in Type
 • Current Progress
@@ -536,43 +576,40 @@ End your message with "sending my updates"`;
 • Blockers
 
 Remember to end your message with "sending my updates"`,
-              source: "discord",
-            },
-            [],
-          );
-          return false;
+            source: "discord",
+          });
+          return {
+            success: false,
+            error: `Missing fields: ${missingFieldsList}`,
+          };
         }
 
         // Handle other errors
-        logger.error("Unexpected error:", error);
-        await callback(
-          {
-            text: "❌ An error occurred while processing your update. Please try again.",
-            source: "discord",
-          },
-          [],
-        );
-        return false;
+        logger.error(`Unexpected error: ${toErrorMessage(error)}`);
+        await callback({
+          text: "❌ An error occurred while processing your update. Please try again.",
+          source: "discord",
+        });
+        return { success: false, error: toErrorMessage(error) };
       }
     } catch (error: unknown) {
       const err = error as Error;
       logger.error("=== RECORD TEAM MEMBER UPDATES HANDLER ERROR ===");
-      logger.error("Error details:", {
-        name: err.name || "Unknown",
-        message: err.message || "No message",
-        stack: err.stack || "No stack trace",
-      });
+      logger.error(
+        `Error details: ${stringifyForLog({
+          name: err.name || "Unknown",
+          message: err.message || "No message",
+          stack: err.stack || "No stack trace",
+        })}`,
+      );
 
       if (callback) {
-        await callback(
-          {
-            text: "❌ An error occurred while processing your update. Please try again.",
-            source: "discord",
-          },
-          [],
-        );
+        await callback({
+          text: "❌ An error occurred while processing your update. Please try again.",
+          source: "discord",
+        });
       }
-      return false;
+      return { success: false, error: toErrorMessage(error) };
     }
   },
   examples: [

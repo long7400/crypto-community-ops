@@ -1,5 +1,4 @@
 import fs from "node:fs";
-import os from "node:os";
 import path from "node:path";
 import type { TestCase } from "@elizaos/core";
 import {
@@ -46,6 +45,28 @@ const elizaOpenAIFirst = ensureTestCharacter(project.agents[0].character, {
 });
 
 const agentRuntimes = new Map<string, IAgentRuntime>();
+const runtimeTempDirs = new Map<string, string>();
+const testDbRootDir = path.join(process.cwd(), ".tmp", "test-db");
+
+function clearPreviousTempDbs(): void {
+  fs.rmSync(testDbRootDir, { recursive: true, force: true });
+  fs.mkdirSync(testDbRootDir, { recursive: true });
+}
+
+function createTempDbDir(characterName: string): string {
+  const safeCharacterName = characterName
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+
+  const dataDir = path.join(testDbRootDir, safeCharacterName || "agent");
+  fs.rmSync(dataDir, { recursive: true, force: true });
+  fs.mkdirSync(dataDir, { recursive: true });
+
+  console.log(`Using isolated test database directory: ${dataDir}`);
+
+  return dataDir;
+}
 
 // Initialize runtime for a character
 /**
@@ -55,11 +76,33 @@ const agentRuntimes = new Map<string, IAgentRuntime>();
  * @returns {Promise<IAgentRuntime>} A promise that resolves to the initialized agent runtime.
  */
 async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
+  let dataDir: string | undefined;
+
   try {
     character.id = stringToUuid(character.name);
 
+    dataDir = createTempDbDir(character.name);
+    runtimeTempDirs.set(character.name, dataDir);
+
+    const characterSettings = {
+      ...(character.settings ?? {}),
+      PGLITE_DATA_DIR: dataDir,
+      POSTGRES_URL: "",
+      DATABASE_URL: "",
+    };
+
+    character.settings = characterSettings;
+
     const runtime = new AgentRuntime({
-      character,
+      character: {
+        ...character,
+        settings: characterSettings,
+      },
+      settings: {
+        PGLITE_DATA_DIR: dataDir,
+        POSTGRES_URL: "",
+        DATABASE_URL: "",
+      },
       fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
         const requestTarget =
           typeof input === "string"
@@ -73,102 +116,31 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
       },
     });
 
-    const envPath = path.join(process.cwd(), ".env");
-
-    // try to read a file in the current directory titled .env
-    let postgresUrl: string | undefined;
-    // Try to find .env file by recursively checking parent directories
-    let currentPath = envPath;
-    let depth = 0;
-    const maxDepth = 10;
-
-    while (depth < maxDepth && currentPath.includes(path.sep)) {
-      if (fs.existsSync(currentPath)) {
-        const env = fs.readFileSync(currentPath, "utf8");
-        const envVars = env.split("\n").filter((line) => line.trim() !== "");
-        const postgresUrlLine = envVars.find((line) =>
-          line.startsWith("POSTGRES_URL="),
-        );
-        if (postgresUrlLine) {
-          postgresUrl = postgresUrlLine.split("=")[1].trim();
-          break;
-        }
-      }
-
-      // Move up one directory by getting the parent directory path
-      // First get the directory containing the current .env file
-      const currentDir = path.dirname(currentPath);
-      // Then move up one directory from there
-      const parentDir = path.dirname(currentDir);
-      currentPath = path.join(parentDir, ".env");
-      depth++;
-    }
-
-    // Implement the database directory setup logic
-    let dataDir = "./elizadb"; // Default fallback path
-    try {
-      // 1. Get the user's home directory
-      const homeDir = os.homedir();
-      const elizaDir = path.join(homeDir, ".eliza");
-      const elizaDbDir = path.join(elizaDir, "db");
-
-      // Debug information
-      console.log(`Setting up database directory at: ${elizaDbDir}`);
-
-      // 2 & 3. Check if .eliza directory exists, create if not
-      if (!fs.existsSync(elizaDir)) {
-        console.log(`Creating .eliza directory at: ${elizaDir}`);
-        fs.mkdirSync(elizaDir, { recursive: true });
-      }
-
-      // 4 & 5. Check if db directory exists in .eliza, create if not
-      if (!fs.existsSync(elizaDbDir)) {
-        console.log(`Creating db directory at: ${elizaDbDir}`);
-        fs.mkdirSync(elizaDbDir, { recursive: true });
-      }
-
-      // 6, 7 & 8. Use the db directory
-      dataDir = elizaDbDir;
-      console.log(`Using database directory: ${dataDir}`);
-    } catch (error) {
-      console.warn(
-        "Failed to create database directory in home directory, using fallback location:",
-        error,
-      );
-      // 9. On failure, use the fallback path
-    }
-
-    const options = postgresUrl
-      ? {
-          dataDir,
-          postgresUrl,
-        }
-      : {
-          dataDir,
-        };
-
     const drizzleAdapter = await import("@elizaos/plugin-sql");
     const adapter = drizzleAdapter.createDatabaseAdapter(
-      options,
+      { dataDir },
       runtime.agentId,
     );
+
     if (!adapter) {
       throw new Error("No database adapter found in default drizzle plugin");
     }
+
     runtime.registerDatabaseAdapter(adapter);
 
-    // Make sure character exists in database
-    await runtime.ensureAgentExists(character);
-
-    while (true) {
-      try {
-        await adapter.getAgent(runtime.agentId);
-        break;
-      } catch (error) {
-        await new Promise((resolve) => setTimeout(resolve, 1000));
-        logger.error("Waiting for tables to be created...");
-      }
-    }
+    await adapter.runPluginMigrations?.(
+      [
+        {
+          name: "@elizaos/plugin-sql",
+          schema: drizzleAdapter.plugin.schema,
+        },
+      ],
+      {
+        verbose: true,
+        force: false,
+        dryRun: false,
+      },
+    );
 
     await runtime.initialize();
 
@@ -182,9 +154,9 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
     );
     return runtime;
   } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
     logger.error(
-      `Failed to initialize test runtime for ${character.name}:`,
-      error,
+      `Failed to initialize test runtime for ${character.name}: ${message}`,
     );
     throw error;
   }
@@ -192,6 +164,8 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
 
 // Initialize the runtimes
 beforeAll(async () => {
+  clearPreviousTempDbs();
+
   const characters = [defaultCharacter, elizaOpenAIFirst];
 
   for (const character of characters) {
@@ -202,13 +176,27 @@ beforeAll(async () => {
 
 // Cleanup after all tests
 afterAll(async () => {
-  for (const [characterName] of agentRuntimes.entries()) {
+  for (const [characterName, dataDir] of runtimeTempDirs.entries()) {
     try {
-      logger.info(`Cleaned up ${characterName}`);
+      const runtime = agentRuntimes.get(characterName) as
+        | { stop?: () => Promise<void>; close?: () => Promise<void> }
+        | undefined;
+
+      if (runtime?.stop) {
+        await runtime.stop();
+      } else if (runtime?.close) {
+        await runtime.close();
+      }
+
+      logger.info(`Preserved ${characterName} test database at ${dataDir}`);
     } catch (error) {
-      logger.error(`Error during cleanup for ${characterName}:`, error);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Error during cleanup for ${characterName}: ${message}`);
     }
   }
+
+  agentRuntimes.clear();
+  runtimeTempDirs.clear();
 });
 
 // Test suite for each character
@@ -329,7 +317,7 @@ class TestRunner {
     } catch (error) {
       this.stats.failed++;
       logger.error(`✗ ${test.name}`);
-      logger.error(error);
+      logger.error(error instanceof Error ? error : String(error));
       const testError =
         error instanceof Error ? error : new Error(String(error));
       this.addTestResult(file, suite, test.name, TestStatus.Failed, testError);
@@ -396,7 +384,8 @@ class TestRunner {
           }
         }
       } catch (error) {
-        logger.error(`Error in plugin ${plugin.name}:`, error);
+        const message = error instanceof Error ? error.message : String(error);
+        logger.error(`Error in plugin ${plugin.name}: ${message}`);
         throw error;
       }
     }

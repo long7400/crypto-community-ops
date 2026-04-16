@@ -13,6 +13,10 @@ import { CheckInService } from "./services/CheckInService";
 import { TeamUpdateTrackerService } from "./services/updateTracker";
 import { registerTasks } from "./tasks";
 
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
 /**
  * Plugin for team coordination functionality
  * Handles team member management, availability tracking, and check-ins
@@ -65,8 +69,7 @@ export const teamCoordinatorPlugin: Plugin = {
             }
           } catch (error) {
             logger.warn(
-              `Failed to register tasks (attempt ${i + 1}/${retries}):`,
-              error,
+              `Failed to register tasks (attempt ${i + 1}/${retries}): ${toErrorMessage(error)}`,
             );
           }
 
@@ -81,12 +84,16 @@ export const teamCoordinatorPlugin: Plugin = {
 
       // Start the retry process asynchronously
       registerTasksWithRetry().catch((error) => {
-        logger.error("Error in registerTasksWithRetry:", error);
+        logger.error(
+          `Error in registerTasksWithRetry: ${toErrorMessage(error)}`,
+        );
       });
 
       logger.info("Team Coordinator plugin initialized successfully");
     } catch (error) {
-      logger.error("Failed to initialize Team Coordinator plugin:", error);
+      logger.error(
+        `Failed to initialize Team Coordinator plugin: ${toErrorMessage(error)}`,
+      );
       throw error;
     }
   },

@@ -68,13 +68,15 @@ describe("LoadTestService", () => {
       throw new Error(`Expected metrics to exist for test ${testId}`);
     }
 
-    logger.info("Current test metrics:", {
-      testId,
-      startTime: metrics.startTime,
-      messageCount: metrics.messageCount,
-      errors: metrics.errors,
-      testDuration: Date.now() - metrics.startTime,
-    });
+    logger.info(
+      `Current test metrics: ${JSON.stringify({
+        testId,
+        startTime: metrics.startTime,
+        messageCount: metrics.messageCount,
+        errors: metrics.errors,
+        testDuration: Date.now() - metrics.startTime,
+      })}`,
+    );
 
     expect(metrics.messageCount).toBe(2);
     expect(metrics.errors).toBe(1);
@@ -86,7 +88,7 @@ describe("LoadTestService", () => {
     logger.info(`Service stopped in ${Date.now() - stopStartTime}ms`);
 
     const afterStopMetrics = service.getTestMetrics(testId);
-    logger.info("After stop metrics:", afterStopMetrics);
+    logger.info(`After stop metrics: ${JSON.stringify(afterStopMetrics)}`);
     expect(afterStopMetrics).toBeUndefined();
     logger.info(
       "Test complete - service stop cleared all test data as expected",

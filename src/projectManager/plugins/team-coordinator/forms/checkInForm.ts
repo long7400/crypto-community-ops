@@ -1,5 +1,18 @@
-import { type Content, logger, type IAgentRuntime } from "@elizaos/core";
 import type { HandlerCallback } from "@elizaos/core";
+import { type Content, type IAgentRuntime, logger } from "@elizaos/core";
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function stringifyForLog(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
 
 // Define interfaces for Discord component types
 interface DiscordComponent {
@@ -49,10 +62,12 @@ export async function sendCheckInReportForm(
   serverInfo?: { serverId: string; serverName?: string },
 ): Promise<void> {
   logger.info("Sending check-in report form to Discord...");
-  logger.info("Server context:", {
-    serverId: serverInfo?.serverId,
-    serverName: serverInfo?.serverName,
-  });
+  logger.info(
+    `Server context: ${stringifyForLog({
+      serverId: serverInfo?.serverId,
+      serverName: serverInfo?.serverName,
+    })}`,
+  );
   logger.debug(`Received ${channels?.length || 0} channels for the form`);
 
   // Log every channel we received for debugging purposes
@@ -145,8 +160,8 @@ export async function sendCheckInReportForm(
 
   try {
     logger.info("Sending check-in report channel selection form to Discord...");
-    logger.debug("Server info being sent:", serverInfo);
-    logger.debug("Form components:", JSON.stringify(formComponents, null, 2));
+    logger.debug(`Server info being sent: ${stringifyForLog(serverInfo)}`);
+    logger.debug(`Form components: ${stringifyForLog(formComponents)}`);
     logger.debug(`Components count: ${formComponents.length}`);
 
     // Count total action rows to ensure we don't exceed Discord's limit of 5
@@ -159,12 +174,14 @@ export async function sendCheckInReportForm(
       logger.warn("Components trimmed to 5 to avoid Discord API error");
     }
 
-    await callback(content, []);
+    await callback(content);
     logger.info("Successfully sent check-in report form");
   } catch (error: unknown) {
     const err = error as Error;
-    logger.error(`Error sending check-in report form: ${err}`);
-    logger.error("Error stack:", err.stack);
+    logger.error(
+      `Error sending check-in report form: ${toErrorMessage(error)}`,
+    );
+    logger.error(`Error stack: ${err.stack}`);
     throw error;
   }
 }

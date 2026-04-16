@@ -1,13 +1,13 @@
 import {
-  IAgentRuntime,
-  logger,
-  EventType,
-  Service,
   createUniqueUuid,
-  ModelType,
-  type UUID,
+  EventType,
+  type IAgentRuntime,
+  logger,
   type Memory,
   type MemoryMetadata,
+  ModelType,
+  Service,
+  type UUID,
 } from "@elizaos/core";
 import type {
   Channel,
@@ -16,8 +16,12 @@ import type {
   TextChannel,
   VoiceChannel,
 } from "discord.js";
-import { fetchCheckInSchedules } from "../actions/checkInList";
 import type { CheckInSchedule } from "../../../types";
+import { fetchCheckInSchedules } from "../actions/checkInList";
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 // Define interfaces for custom services
 interface IDiscordService extends Service {
@@ -85,7 +89,9 @@ export class TeamUpdateTrackerService extends Service {
         this.setupTelegramRetry();
       }
     } catch (error) {
-      logger.error("Error initializing Discord Channel Service:", error);
+      logger.error(
+        `Error initializing Discord Channel Service: ${toErrorMessage(error)}`,
+      );
     }
   }
 
@@ -121,8 +127,7 @@ export class TeamUpdateTrackerService extends Service {
               })
               .catch((error) => {
                 logger.error(
-                  `Error fetching team members for server ${serverId}:`,
-                  error,
+                  `Error fetching team members for server ${serverId}: ${toErrorMessage(error)}`,
                 );
               });
           }
@@ -132,7 +137,9 @@ export class TeamUpdateTrackerService extends Service {
           logger.debug("Discord service still not available, will retry");
         }
       } catch (error) {
-        logger.debug("Error checking for Discord service:", error);
+        logger.debug(
+          `Error checking for Discord service: ${toErrorMessage(error)}`,
+        );
       }
     }, 15000);
   }
@@ -153,7 +160,7 @@ export class TeamUpdateTrackerService extends Service {
 
           try {
             const updates = await this.telegramBot.telegram.getMe();
-            logger.info("Bot info:", updates);
+            logger.info(`Bot info: ${JSON.stringify(updates)}`);
 
             // Get all chats the bot is a member of
             logger.info("Fetching all Telegram chats...");
@@ -200,14 +207,18 @@ export class TeamUpdateTrackerService extends Service {
               //   }
               // }
             } catch (error) {
-              logger.error("Error sending Telegram message:", error);
+              logger.error(
+                `Error sending Telegram message: ${toErrorMessage(error)}`,
+              );
               // The error in logs shows "chat not found" which might mean we need a chat ID instead of username
               logger.info(
                 "Note: Telegram might require a numeric chat ID instead of a username",
               );
             }
           } catch (err) {
-            logger.error("Error fetching Telegram groups:", err);
+            logger.error(
+              `Error fetching Telegram groups: ${toErrorMessage(err)}`,
+            );
           }
 
           clearInterval(intervalId);
@@ -215,7 +226,9 @@ export class TeamUpdateTrackerService extends Service {
           logger.debug("Telegram service still not available, will retry");
         }
       } catch (error) {
-        logger.debug("Error checking for Telegram service:", error);
+        logger.debug(
+          `Error checking for Telegram service: ${toErrorMessage(error)}`,
+        );
       }
     }, 15000);
   }
@@ -298,8 +311,10 @@ export class TeamUpdateTrackerService extends Service {
       return users;
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error(`Error fetching users for channel ${channelId}:`, err);
-      logger.error("Error stack:", err.stack);
+      logger.error(
+        `Error fetching users for channel ${channelId}: ${toErrorMessage(error)}`,
+      );
+      logger.error(`Error stack: ${err.stack}`);
       return [];
     }
   }
@@ -381,10 +396,9 @@ export class TeamUpdateTrackerService extends Service {
       } catch (error: unknown) {
         const err = error as Error;
         logger.error(
-          `Failed to send DM to user ${user.displayName} (${user.id}):`,
-          err,
+          `Failed to send DM to user ${user.displayName} (${user.id}): ${toErrorMessage(error)}`,
         );
-        logger.error("Error stack:", err.stack);
+        logger.error(`Error stack: ${err.stack}`);
       }
     }
 
@@ -487,7 +501,9 @@ export class TeamUpdateTrackerService extends Service {
       }));
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error(`Error fetching team members for server ${serverId}:`, err);
+      logger.error(
+        `Error fetching team members for server ${serverId}: ${toErrorMessage(error)}`,
+      );
       logger.error(`Error stack: ${err.stack}`);
       return [];
     }
@@ -605,7 +621,7 @@ export class TeamUpdateTrackerService extends Service {
                 // For simplicity, assume weekly is on Monday
                 frequencyMatches = currentDay === 1;
                 break;
-              case "BIWEEKLY":
+              case "BIWEEKLY": {
                 // For simplicity, assume biweekly is on every other Monday
                 // We can use the week number of the year to determine if it's an odd or even week
                 const weekNumber = Math.floor(
@@ -615,6 +631,7 @@ export class TeamUpdateTrackerService extends Service {
                 );
                 frequencyMatches = currentDay === 1 && weekNumber % 2 === 0;
                 break;
+              }
               case "MONTHLY":
                 // For simplicity, assume monthly is on the 1st of the month
                 frequencyMatches = now.getUTCDate() === 1;
@@ -637,8 +654,7 @@ export class TeamUpdateTrackerService extends Service {
           );
           if (matchingSchedules.length > 0) {
             logger.info(
-              "Matching schedules:",
-              JSON.stringify(matchingSchedules, null, 2),
+              `Matching schedules: ${JSON.stringify(matchingSchedules, null, 2)}`,
             );
 
             // Process each matching schedule to fetch users and send check-in requests
@@ -726,7 +742,9 @@ export class TeamUpdateTrackerService extends Service {
                   await this.telegramBot.telegram.sendMessage(
                     serverId,
                     updateRequestMessage,
-                    { parse_mode: "Markdown" },
+                    {
+                      parse_mode: "Markdown",
+                    },
                   );
                   logger.info(
                     `Sent formatted update request to Telegram group ${serverId} with ${teamMembers.length} tagged members`,
@@ -905,25 +923,23 @@ export class TeamUpdateTrackerService extends Service {
                     );
                   }
                 } catch (updateError: unknown) {
-                  const err = updateError as Error;
                   logger.error(
-                    `Error updating last updated date for schedule ${schedule.scheduleId}:`,
-                    err,
+                    `Error updating last updated date for schedule ${schedule.scheduleId}: ${toErrorMessage(updateError)}`,
                   );
                 }
               } catch (error: unknown) {
-                const err = error as Error;
                 logger.error(
-                  `Error processing schedule ${schedule.scheduleId}:`,
-                  err,
+                  `Error processing schedule ${schedule.scheduleId}: ${toErrorMessage(error)}`,
                 );
               }
             }
           }
         } catch (error: unknown) {
           const err = error as Error;
-          logger.error("Failed to fetch or process check-in schedules:", err);
-          logger.error("Error stack:", err.stack);
+          logger.error(
+            `Failed to fetch or process check-in schedules: ${toErrorMessage(error)}`,
+          );
+          logger.error(`Error stack: ${err.stack}`);
         }
       } else {
         logger.warn("Discord client not available for check-in service");

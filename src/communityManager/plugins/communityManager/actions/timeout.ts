@@ -2,17 +2,17 @@ import {
   type Action,
   type ActionExample,
   ChannelType,
+  composePromptFromState,
   type HandlerCallback,
   type IAgentRuntime,
-  type Memory,
-  type State,
   logger,
+  type Memory,
   ModelType,
-  composePromptFromState,
+  type State,
 } from "@elizaos/core";
 import {
-  type PermissionsBitField,
   getPermissionsBitField,
+  type PermissionsBitField,
 } from "../../../../utils/discordHelper";
 
 export const getTimeoutUserTemplate = (thoughts?: string) => {
@@ -92,7 +92,7 @@ const getTargetUserFromMessages = async (
     prompt,
   });
 
-  let jsonMatch = response.match(/```json\s*([\s\S]*?)```/);
+  const jsonMatch = response.match(/```json\s*([\s\S]*?)```/);
   const jsonString = jsonMatch ? jsonMatch[1] : response;
 
   try {
@@ -285,20 +285,37 @@ export const timeoutUser: Action = {
     _options: any,
     callback: HandlerCallback | undefined,
     responses?: Memory[],
-  ): Promise<boolean> => {
-    if (!state) return false;
+  ) => {
+    if (!state) {
+      return {
+        success: false,
+        error: "Missing state for timeout action",
+      };
+    }
     const source = message.content.source;
     const params = {
       runtime,
       message,
       state,
-      callback: callback || ((content) => Promise.resolve(content)),
+      callback:
+        callback ||
+        ((content) => Promise.resolve([content as unknown as Memory])),
       responses,
     };
 
-    if (source === "discord") return await handleDiscordTimeout(params);
-    if (source === "telegram") return await handleTelegramTimeout(params);
-    return false; // Default return for when source is neither discord nor telegram
+    if (source === "discord") {
+      const success = await handleDiscordTimeout(params);
+      return success
+        ? { success: true }
+        : { success: false, error: "Discord timeout failed" };
+    }
+    if (source === "telegram") {
+      const success = await handleTelegramTimeout(params);
+      return success
+        ? { success: true }
+        : { success: false, error: "Telegram timeout failed" };
+    }
+    return { success: false, error: "Unsupported moderation source" };
   },
   examples: [
     [

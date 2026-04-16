@@ -1,10 +1,14 @@
 import {
   type IAgentRuntime,
-  type UUID,
   logger,
   type Service,
+  type UUID,
 } from "@elizaos/core";
 import { TeamUpdateTrackerService } from "./services/updateTracker";
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 export const registerTasks = async (
   runtime: IAgentRuntime,
@@ -28,8 +32,7 @@ export const registerTasks = async (
     }
   } catch (error) {
     logger.warn(
-      "Error getting existing service, creating new instance:",
-      error,
+      `Error getting existing service, creating new instance: ${toErrorMessage(error)}`,
     );
     teamUpdateService = new TeamUpdateTrackerService(runtime);
   }
@@ -56,7 +59,9 @@ export const registerTasks = async (
         logger.info("Running team check-in service job");
         await teamUpdateService.checkInServiceJob();
       } catch (error) {
-        logger.error("Failed to run check-in service job:", error);
+        logger.error(
+          `Failed to run check-in service job: ${toErrorMessage(error)}`,
+        );
       }
     },
   });

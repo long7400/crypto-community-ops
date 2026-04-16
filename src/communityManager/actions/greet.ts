@@ -7,9 +7,9 @@ import {
   type Content,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  logger,
 } from "@elizaos/core";
 /**
  * Action to greet new users in the configured channel
@@ -62,7 +62,8 @@ export const greetAction: Action = {
 
       return isNewUser || isGreetCommand;
     } catch (error) {
-      logger.error("Error validating greet action:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Error validating greet action: ${message}`);
       return false;
     }
   },
@@ -137,7 +138,8 @@ export const greetAction: Action = {
       // Send greeting
       await callback?.(content);
     } catch (error) {
-      logger.error("Error in greet handler:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Error in greet handler: ${message}`);
     }
   },
 

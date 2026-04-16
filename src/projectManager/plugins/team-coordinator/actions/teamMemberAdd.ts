@@ -1,16 +1,30 @@
 import {
   type Action,
+  type ActionResult,
   ChannelType,
+  createUniqueUuid,
+  getUserServerRole,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
   type State,
-  createUniqueUuid,
   type UUID,
-  getUserServerRole,
-  logger,
 } from "@elizaos/core";
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function stringifyForLog(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
 
 interface TeamMember {
   section: string;
@@ -92,7 +106,9 @@ async function fetchTeamMembersForServer(
     return teamMembers;
   } catch (error: unknown) {
     const err = error as Error;
-    logger.error(`Error fetching team members for server ${serverId}:`, error);
+    logger.error(
+      `Error fetching team members for server ${serverId}: ${toErrorMessage(error)}`,
+    );
     logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
     return [];
   }
@@ -186,7 +202,9 @@ export const addTeamMemberAction: Action = {
       return true;
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error("Error in addTeamMemberAction validation:", error);
+      logger.error(
+        `Error in addTeamMemberAction validation: ${toErrorMessage(error)}`,
+      );
       logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
       return false;
     }
@@ -197,7 +215,7 @@ export const addTeamMemberAction: Action = {
     state: State | undefined,
     options: Record<string, unknown> = {},
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info("=== RECORD-TEAM-MEMBER HANDLER START ===");
       logger.info(
@@ -205,18 +223,20 @@ export const addTeamMemberAction: Action = {
         JSON.stringify(message.content, null, 2),
       );
 
-      if (!state) return false;
+      if (!state) {
+        return { success: false, error: "Missing state for team member add" };
+      }
 
       if (!callback) {
         logger.warn("No callback function provided");
-        return false;
+        return { success: false, error: "No callback function provided" };
       }
 
       // Extract user message
       const userText = message.content.text as string;
       if (!userText) {
         logger.warn("No text content found in message");
-        return false;
+        return { success: false, error: "No text content found in message" };
       }
 
       // Get server ID from state
@@ -225,13 +245,10 @@ export const addTeamMemberAction: Action = {
 
       if (!serverId) {
         logger.error("No server ID found in state");
-        await callback(
-          {
-            text: "❌ Failed to identify the server. Please try again.",
-          },
-          [],
-        );
-        return false;
+        await callback({
+          text: "❌ Failed to identify the server. Please try again.",
+        });
+        return { success: false, error: "No server ID found in state" };
       }
 
       logger.info(
@@ -306,12 +323,13 @@ export const addTeamMemberAction: Action = {
           }
 
           logger.info(
-            "Successfully parsed team member configuration:",
-            teamMembers,
+            `Successfully parsed team member configuration: ${stringifyForLog(teamMembers)}`,
           );
         } catch (parseError) {
-          logger.error("Failed to parse AI response as JSON:", parseError);
-          logger.error("Raw response was:", parsedResponse);
+          logger.error(
+            `Failed to parse AI response as JSON: ${toErrorMessage(parseError)}`,
+          );
+          logger.error(`Raw response was: ${parsedResponse}`);
           throw new Error("Failed to parse team member data from response");
         }
 
@@ -351,13 +369,13 @@ export const addTeamMemberAction: Action = {
 
         if (validatedTeamMembers.length === 0) {
           logger.error("No valid team members found after validation");
-          await callback(
-            {
-              text: "❌ Could not identify any team members with valid information. Please ensure each team member has a section, format, and either a Telegram or Discord username.",
-            },
-            [],
-          );
-          return false;
+          await callback({
+            text: "❌ Could not identify any team members with valid information. Please ensure each team member has a section, format, and either a Telegram or Discord username.",
+          });
+          return {
+            success: false,
+            error: "No valid team members found after validation",
+          };
         }
 
         logger.info(
@@ -378,12 +396,14 @@ export const addTeamMemberAction: Action = {
         });
 
         const existingConfig = memoriesForStoringTeamMembers.find((memory) => {
-          logger.info("Checking memory:", memory);
+          logger.info(`Checking memory: ${stringifyForLog(memory)}`);
           const isTeamMembersExist =
             memory.content.type === "store-team-members-memory";
           return isTeamMembersExist;
         });
-        logger.info("Found existing config:", existingConfig);
+        logger.info(
+          `Found existing config: ${stringifyForLog(existingConfig)}`,
+        );
 
         if (!existingConfig) {
           logger.info(
@@ -397,7 +417,9 @@ export const addTeamMemberAction: Action = {
               serverId: serverId,
             };
 
-            logger.info("Creating store-team-members channel config:", config);
+            logger.info(
+              `Creating store-team-members channel config: ${stringifyForLog(config)}`,
+            );
 
             // First create the room to avoid foreign key constraint error
             logger.info(
@@ -440,10 +462,11 @@ export const addTeamMemberAction: Action = {
             logger.info("Successfully stored new report channel config");
           } catch (error: unknown) {
             const configError = error as Error;
-            logger.error("Failed to store report channel config:", configError);
             logger.error(
-              "Error stack:",
-              configError.stack || "No stack trace available",
+              `Failed to store report channel config: ${toErrorMessage(error)}`,
+            );
+            logger.error(
+              `Error stack: ${configError.stack || "No stack trace available"}`,
             );
           }
         } else {
@@ -492,12 +515,9 @@ export const addTeamMemberAction: Action = {
               .join("\n");
 
             // Add a callback here to respond when no new members are added
-            await callback(
-              {
-                text: `✅ All team members are already registered!\n\nCurrent team members:\n${teamMembersList}`,
-              },
-              [],
-            );
+            await callback({
+              text: `✅ All team members are already registered!\n\nCurrent team members:\n${teamMembersList}`,
+            });
           } else {
             // Add new team members to the existing list
             logger.info(
@@ -571,16 +591,13 @@ export const addTeamMemberAction: Action = {
               })
               .join("\n");
 
-            await callback(
-              {
-                text: `✅ Team members have been successfully updated!\n\nCurrent team members:\n${teamMembersList}`,
-              },
-              [],
-            );
+            await callback({
+              text: `✅ Team members have been successfully updated!\n\nCurrent team members:\n${teamMembersList}`,
+            });
           }
 
           // Return early since we've already sent the callback
-          return true;
+          return { success: true };
         }
 
         logger.info("fetching updated members from memory");
@@ -624,53 +641,47 @@ export const addTeamMemberAction: Action = {
             })
             .join("\n");
 
-          await callback(
-            {
-              text: `✅ Team members have been successfully added!\n\nCurrent team members:\n${teamMembersList}`,
-            },
-            [],
-          );
+          await callback({
+            text: `✅ Team members have been successfully added!\n\nCurrent team members:\n${teamMembersList}`,
+          });
         } else {
-          await callback(
-            {
-              text: `✅ Team members have been successfully added!`,
-            },
-            [],
-          );
+          await callback({
+            text: `✅ Team members have been successfully added!`,
+          });
         }
       } catch (error: unknown) {
         const parsingError = error as Error;
-        logger.error("Failed to parse team member information:", parsingError);
         logger.error(
-          "Error stack:",
-          parsingError.stack || "No stack trace available",
+          `Failed to parse team member information: ${toErrorMessage(error)}`,
+        );
+        logger.error(
+          `Error stack: ${parsingError.stack || "No stack trace available"}`,
         );
 
-        await callback(
-          {
-            text: "❌ There was an issue processing the team member information. Please check the format and try again.",
-          },
-          [],
-        );
-        return false;
+        await callback({
+          text: "❌ There was an issue processing the team member information. Please check the format and try again.",
+        });
+        return {
+          success: false,
+          error: "Failed to parse team member information",
+        };
       }
 
-      return true;
+      return { success: true };
     } catch (error: unknown) {
       const err = error as Error;
       logger.error("=== TEAM-MEMBER HANDLER ERROR ===");
-      logger.error(`Error processing team member recording: ${err}`);
+      logger.error(
+        `Error processing team member recording: ${toErrorMessage(error)}`,
+      );
       logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
 
       if (callback) {
-        await callback(
-          {
-            text: "❌ An unexpected error occurred while recording team members. Please try again later.",
-          },
-          [],
-        );
+        await callback({
+          text: "❌ An unexpected error occurred while recording team members. Please try again later.",
+        });
       }
-      return false;
+      return { success: false, error: toErrorMessage(error) };
     }
   },
   examples: [

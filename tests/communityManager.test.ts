@@ -1,126 +1,157 @@
 // tests/communityManager.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { CommunityManagerTestSuite } from './test_suites/CommunityManagerTestSuite';
-import type { IAgentRuntime } from '@elizaos/core';
 
-describe('CommunityManagerTestSuite', () => {
-  let mockScenarioService: any;
-  let mockRuntime: IAgentRuntime;
+import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { CommunityManagerTestSuite } from "./test_suites/CommunityManagerTestSuite";
 
-  beforeEach(() => {
-    mockScenarioService = {
-      createWorld: vi.fn().mockResolvedValue('world-id'),
-      createRoom: vi.fn().mockResolvedValue('room-id'),
-      addParticipant: vi.fn().mockResolvedValue(true),
-      sendMessage: vi.fn().mockResolvedValue(true),
-      waitForCompletion: vi.fn().mockResolvedValue(true),
-    };
+describe("CommunityManagerTestSuite", () => {
+	let mockScenarioService: any;
+	let mockRuntime: IAgentRuntime;
 
-    mockRuntime = {
-      getService: vi.fn().mockReturnValue(mockScenarioService),
-      agentId: 'agent-id',
-    } as unknown as IAgentRuntime;
-  });
+	beforeEach(() => {
+		mockScenarioService = {
+			createWorld: vi.fn().mockResolvedValue("world-id"),
+			createRoom: vi.fn().mockResolvedValue("room-id"),
+			addParticipant: vi.fn().mockResolvedValue(true),
+			sendMessage: vi.fn().mockResolvedValue(true),
+			waitForCompletion: vi.fn().mockResolvedValue(true),
+		};
 
-  describe('Core Functionality', () => {
-    it('should resolve conflicts', async () => {
-      const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Conflict Resolution');
+		mockRuntime = {
+			getService: vi.fn().mockReturnValue(mockScenarioService),
+			agentId: "agent-id",
+		} as unknown as IAgentRuntime;
+	});
 
-      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
-      expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Conflict Test', 'Test Owner');
-      expect(mockScenarioService.createRoom).toHaveBeenCalledWith('world-id', 'general');
-      expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
-        mockRuntime,
-        'world-id',
-        'room-id',
-        "There's a user causing disruptions in the general channel"
-      );
-    });
+	describe("Core Functionality", () => {
+		it("should resolve conflicts", async () => {
+			const testSuite = new CommunityManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Conflict Resolution",
+			);
 
-    it('should handle new user onboarding', async () => {
-      const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test New User Onboarding');
+			await expect(test?.fn(mockRuntime)).resolves.toBeUndefined();
+			expect(mockScenarioService.createWorld).toHaveBeenCalledWith(
+				"Conflict Test",
+				"Test Owner",
+			);
+			expect(mockScenarioService.createRoom).toHaveBeenCalledWith(
+				"world-id",
+				"general",
+			);
+			expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
+				mockRuntime,
+				"world-id",
+				"room-id",
+				"There's a user causing disruptions in the general channel",
+			);
+		});
 
-      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
-      expect(mockScenarioService.createRoom).toHaveBeenCalledWith('world-id', 'welcome');
-      expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
-        mockRuntime,
-        'world-id',
-        'room-id',
-        "Hi everyone, I'm new here!"
-      );
-    });
+		it("should handle new user onboarding", async () => {
+			const testSuite = new CommunityManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test New User Onboarding",
+			);
 
-    it('should perform moderation actions', async () => {
-      const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Moderation Actions');
+			await expect(test?.fn(mockRuntime)).resolves.toBeUndefined();
+			expect(mockScenarioService.createRoom).toHaveBeenCalledWith(
+				"world-id",
+				"welcome",
+			);
+			expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
+				mockRuntime,
+				"world-id",
+				"room-id",
+				"Hi everyone, I'm new here!",
+			);
+		});
 
-      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
-      expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Moderation Test', 'Test Owner');
-      expect(mockScenarioService.waitForCompletion).toHaveBeenCalledWith(10000);
-    });
+		it("should perform moderation actions", async () => {
+			const testSuite = new CommunityManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Moderation Actions",
+			);
 
-    it('should drive community engagement', async () => {
-      const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Community Engagement');
+			await expect(test?.fn(mockRuntime)).resolves.toBeUndefined();
+			expect(mockScenarioService.createWorld).toHaveBeenCalledWith(
+				"Moderation Test",
+				"Test Owner",
+			);
+			expect(mockScenarioService.waitForCompletion).toHaveBeenCalledWith(10000);
+		});
 
-      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
-      expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
-        mockRuntime,
-        'world-id',
-        'room-id',
-        "Let's plan the next community event"
-      );
-    });
-  });
+		it("should drive community engagement", async () => {
+			const testSuite = new CommunityManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Community Engagement",
+			);
 
-  describe('Error Handling', () => {
-    it('should throw when missing scenario service', async () => {
-      const brokenRuntime = {
-        ...mockRuntime,
-        getService: vi.fn().mockReturnValue(undefined),
-      };
+			await expect(test?.fn(mockRuntime)).resolves.toBeUndefined();
+			expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
+				mockRuntime,
+				"world-id",
+				"room-id",
+				"Let's plan the next community event",
+			);
+		});
+	});
 
-      const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Conflict Resolution');
+	describe("Error Handling", () => {
+		it("should throw when missing scenario service", async () => {
+			const brokenRuntime = {
+				...mockRuntime,
+				getService: vi.fn().mockReturnValue(undefined),
+			};
 
-      await expect(test?.fn(brokenRuntime)).rejects.toThrow('Scenario service not found');
-    });
+			const testSuite = new CommunityManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Conflict Resolution",
+			);
 
-    it('should validate response timing', async () => {
-      mockScenarioService.waitForCompletion.mockResolvedValue(false);
+			await expect(test?.fn(brokenRuntime)).rejects.toThrow(
+				"Scenario service not found",
+			);
+		});
 
-      const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test New User Onboarding');
+		it("should validate response timing", async () => {
+			mockScenarioService.waitForCompletion.mockResolvedValue(false);
 
-      await expect(test?.fn(mockRuntime)).rejects.toThrow(
-        'Agent did not complete onboarding in time'
-      );
-    });
-  });
+			const testSuite = new CommunityManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test New User Onboarding",
+			);
 
-  describe('Character Compliance', () => {
-    it('should ignore off-topic messages', async () => {
-      const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Community Engagement');
+			await expect(test?.fn(mockRuntime)).rejects.toThrow(
+				"Agent did not complete onboarding in time",
+			);
+		});
+	});
 
-      await test?.fn(mockRuntime);
-      const messageContent = mockScenarioService.sendMessage.mock.calls[0][3];
-      expect(messageContent).not.toContain('token price');
-      expect(messageContent).not.toContain('marketing');
-    });
+	describe("Character Compliance", () => {
+		it("should ignore off-topic messages", async () => {
+			const testSuite = new CommunityManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Community Engagement",
+			);
 
-    it('should maintain concise responses', async () => {
-      const testSuite = new CommunityManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Conflict Resolution');
+			await test?.fn(mockRuntime);
+			const messageContent = mockScenarioService.sendMessage.mock.calls[0][3];
+			expect(messageContent).not.toContain("token price");
+			expect(messageContent).not.toContain("marketing");
+		});
 
-      await test?.fn(mockRuntime);
-      const messageCalls = mockScenarioService.sendMessage.mock.calls;
-      messageCalls.forEach((call: any[]) => {
-        const message = call[3];
-        expect(message.split(' ').length).toBeLessThan(20);
-      });
-    });
-  });
+		it("should maintain concise responses", async () => {
+			const testSuite = new CommunityManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Conflict Resolution",
+			);
+
+			await test?.fn(mockRuntime);
+			const messageCalls = mockScenarioService.sendMessage.mock.calls;
+			messageCalls.forEach((call: any[]) => {
+				const message = call[3];
+				expect(message.split(" ").length).toBeLessThan(20);
+			});
+		});
+	});
 });

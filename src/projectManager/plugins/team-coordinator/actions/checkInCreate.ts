@@ -1,19 +1,20 @@
 import {
   type Action,
+  type ActionResult,
   ChannelType,
   type Content,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  type State,
-  type Service,
   composePromptFromState,
   createUniqueUuid,
-  type UUID,
   getUserServerRole,
   getWorldSettings,
+  type HandlerCallback,
+  type IAgentRuntime,
   logger,
+  type Memory,
+  ModelType,
+  type Service,
+  type State,
+  type UUID,
 } from "@elizaos/core";
 
 interface DiscordComponentInteraction {
@@ -60,6 +61,19 @@ const REQUIRED_DISCORD_FIELDS = [
   "PROJECT_MANAGER_DISCORD_API_TOKEN",
 ];
 
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function stringifyForLog(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
 /**
  * Validates the Discord configuration for a specific server.
  * @param {IAgentRuntime} runtime - The Agent runtime.
@@ -86,8 +100,7 @@ async function validateDiscordConfig(
 
     return { isValid: true };
   } catch (error: unknown) {
-    const err = error as Error;
-    logger.error("Error validating Discord config:", err);
+    logger.error(`Error validating Discord config: ${toErrorMessage(error)}`);
     return {
       isValid: false,
       error: "Error validating Discord configuration",
@@ -213,8 +226,9 @@ export const recordCheckInAction: Action = {
 
       return true;
     } catch (error: unknown) {
-      const err = error as Error;
-      logger.error("Error in recordCheckInAction validation:", err);
+      logger.error(
+        `Error in recordCheckInAction validation: ${toErrorMessage(error)}`,
+      );
       return false;
     }
   },
@@ -224,12 +238,14 @@ export const recordCheckInAction: Action = {
     state: State | undefined,
     options: Record<string, unknown> = {},
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     try {
-      if (!state) return false;
+      if (!state) {
+        return { success: false, error: "Missing state for check-in action" };
+      }
       if (!callback) {
         logger.warn("No callback function provided");
-        return false;
+        return { success: false, error: "No callback function provided" };
       }
 
       // Get Discord client first
@@ -246,13 +262,13 @@ export const recordCheckInAction: Action = {
         );
 
         // Try to proceed anyway or handle gracefully
-        await callback(
-          {
-            text: "❌ Unable to connect to Discord services. Please try again later or contact support.",
-          },
-          [],
-        );
-        return false;
+        await callback({
+          text: "❌ Unable to connect to Discord services. Please try again later or contact support.",
+        });
+        return {
+          success: false,
+          error: "Unable to connect to Discord services",
+        };
       }
 
       let textChannels: Array<{ id: string; name: string; type: string }> = [];
@@ -264,13 +280,13 @@ export const recordCheckInAction: Action = {
       const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
       if (!room) {
         logger.error("No room found for the message");
-        return false;
+        return { success: false, error: "No room found for the message" };
       }
 
       const serverId = room.serverId;
       if (!serverId) {
         logger.error("No server ID found for room");
-        return false;
+        return { success: false, error: "No server ID found for room" };
       }
 
       logger.info(`Using server ID: ${serverId}`);
@@ -309,18 +325,19 @@ export const recordCheckInAction: Action = {
             logger.error(`Could not find guild with ID ${serverId}`);
           }
         } catch (error: unknown) {
-          const err = error as Error;
-          logger.error("Error fetching Discord channels:", err);
+          logger.error(
+            `Error fetching Discord channels: ${toErrorMessage(error)}`,
+          );
           logger.debug(
             "Error details:",
-            err instanceof Error ? err.stack : String(err),
+            error instanceof Error ? error.stack : String(error),
           );
         }
       } else {
         logger.warn("Discord service or client is not available");
       }
 
-      logger.info("Text channels variable:", textChannels);
+      logger.info(`Text channels variable: ${stringifyForLog(textChannels)}`);
 
       // Rest of your existing handler code...
       logger.info("=== RECORD-CHECK-IN HANDLER START ===");
@@ -335,7 +352,7 @@ export const recordCheckInAction: Action = {
 
       if (!userText) {
         logger.warn("No text content found in message");
-        return false;
+        return { success: false, error: "No text content found in message" };
       }
 
       // Check if report channel config exists for this server
@@ -349,16 +366,16 @@ export const recordCheckInAction: Action = {
         tableName: "messages",
       });
       logger.info("Retrieved memories:", JSON.stringify(memories, null, 2));
-      logger.debug("Raw memories object:", memories);
+      logger.debug(`Raw memories object: ${stringifyForLog(memories)}`);
 
       logger.info("Looking for existing config with serverId:", serverId);
       const existingConfig = memories.find((memory) => {
-        logger.info("Checking memory:", memory);
+        logger.info(`Checking memory: ${stringifyForLog(memory)}`);
         const isReportConfig = memory.content.type === "report-channel-config";
 
         return isReportConfig;
       });
-      logger.info("Found existing config:", existingConfig);
+      logger.info(`Found existing config: ${stringifyForLog(existingConfig)}`);
 
       // Get message source
       const messageSource =
@@ -418,32 +435,29 @@ export const recordCheckInAction: Action = {
           logger.debug(
             `Generated channels list with ${textChannels.length} channels`,
           );
-          await callback(
-            {
-              text:
-                `Let's set up check-ins for your team members! 📅\n\n` +
-                `First, I need to know where to send the check-in updates when team members respond.\n\n` +
-                `**Available channels:**\n${channelsList}\n\n` +
-                `1️⃣ **Channel for Updates:** Which channel from the list above should the updates be posted once collected from users?\n\n` +
-                `2️⃣ **Check-in Type:** Choose one of the following:\n` +
-                `   • Daily Standup\n` +
-                `   • Sprint Check-in\n` +
-                `   • Mental Health Check-in\n` +
-                `   • Project Status Update\n` +
-                `   • Team Retrospective\n\n` +
-                `3️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
-                `4️⃣ **Frequency:** How often should check-ins occur?\n` +
-                `   • Weekdays\n` +
-                `   • Daily\n` +
-                `   • Weekly\n` +
-                `   • Bi-weekly\n` +
-                `   • Monthly\n` +
-                `5️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC) - Please note all times will be in UTC timezone` +
-                `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
-              source: messageSource,
-            },
-            [],
-          );
+          await callback({
+            text:
+              `Let's set up check-ins for your team members! 📅\n\n` +
+              `First, I need to know where to send the check-in updates when team members respond.\n\n` +
+              `**Available channels:**\n${channelsList}\n\n` +
+              `1️⃣ **Channel for Updates:** Which channel from the list above should the updates be posted once collected from users?\n\n` +
+              `2️⃣ **Check-in Type:** Choose one of the following:\n` +
+              `   • Daily Standup\n` +
+              `   • Sprint Check-in\n` +
+              `   • Mental Health Check-in\n` +
+              `   • Project Status Update\n` +
+              `   • Team Retrospective\n\n` +
+              `3️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
+              `4️⃣ **Frequency:** How often should check-ins occur?\n` +
+              `   • Weekdays\n` +
+              `   • Daily\n` +
+              `   • Weekly\n` +
+              `   • Bi-weekly\n` +
+              `   • Monthly\n` +
+              `5️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC) - Please note all times will be in UTC timezone` +
+              `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
+            source: messageSource,
+          });
 
           logger.info("Sent initial check-in configuration message");
         } else {
@@ -461,38 +475,35 @@ export const recordCheckInAction: Action = {
             `Generated channels list with ${textChannels.length} channels for existing config`,
           );
 
-          await callback(
-            {
-              text:
-                `Let's set up your team check-in schedule! 📅\n\n` +
-                `Please provide the following information (you can answer all at once or one by one):\n\n` +
-                `1️⃣ **Check-in Type:** Choose one of the following:\n` +
-                `   • Daily Standup\n` +
-                `   • Sprint Check-in\n` +
-                `   • Mental Health Check-in\n` +
-                `   • Project Status Update\n` +
-                `   • Team Retrospective\n\n` +
-                `2️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
-                `**Available channels:**\n${channelsList}\n\n` +
-                `3️⃣ **Frequency:** How often should check-ins occur?\n` +
-                `   • Weekdays\n` +
-                `   • Daily\n` +
-                `   • Weekly\n` +
-                `   • Bi-weekly\n` +
-                `   • Monthly\n` +
-                `   • Custom\n\n` +
-                `4️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC)` +
-                `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
-              source: messageSource,
-            },
-            [],
-          );
+          await callback({
+            text:
+              `Let's set up your team check-in schedule! 📅\n\n` +
+              `Please provide the following information (you can answer all at once or one by one):\n\n` +
+              `1️⃣ **Check-in Type:** Choose one of the following:\n` +
+              `   • Daily Standup\n` +
+              `   • Sprint Check-in\n` +
+              `   • Mental Health Check-in\n` +
+              `   • Project Status Update\n` +
+              `   • Team Retrospective\n\n` +
+              `2️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
+              `**Available channels:**\n${channelsList}\n\n` +
+              `3️⃣ **Frequency:** How often should check-ins occur?\n` +
+              `   • Weekdays\n` +
+              `   • Daily\n` +
+              `   • Weekly\n` +
+              `   • Bi-weekly\n` +
+              `   • Monthly\n` +
+              `   • Custom\n\n` +
+              `4️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC)` +
+              `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
+            source: messageSource,
+          });
 
           logger.info(
             "Sent check-in schedule configuration message with channel list",
           );
         }
-        return true;
+        return { success: true };
       }
 
       // Continue with parsing check-in details
@@ -547,13 +558,20 @@ export const recordCheckInAction: Action = {
         );
       } catch (error: unknown) {
         const err = error as Error;
-        logger.error("Failed to parse check-in configuration:", err);
-        logger.error("Error details:", {
-          name: err.name || "Unknown",
-          message: err.message || "No message",
-          stack: err.stack || "No stack trace",
-        });
-        return false;
+        logger.error(
+          `Failed to parse check-in configuration: ${toErrorMessage(error)}`,
+        );
+        logger.error(
+          `Error details: ${stringifyForLog({
+            name: err.name || "Unknown",
+            message: err.message || "No message",
+            stack: err.stack || "No stack trace",
+          })}`,
+        );
+        return {
+          success: false,
+          error: "Failed to parse check-in configuration",
+        };
       }
 
       // Get channel IDs from the parsed configuration
@@ -611,7 +629,9 @@ export const recordCheckInAction: Action = {
             createdAt: new Date().toISOString(),
           };
 
-          logger.info("Creating new report channel config:", config);
+          logger.info(
+            `Creating new report channel config: ${stringifyForLog(config)}`,
+          );
 
           // First create the room to avoid foreign key constraint error
           logger.info(`Creating room with ID: ${roomId}`);
@@ -647,7 +667,9 @@ export const recordCheckInAction: Action = {
           logger.info("Successfully stored new report channel config");
         } catch (configError: unknown) {
           const err = configError as Error;
-          logger.error("Failed to store report channel config:", err);
+          logger.error(
+            `Failed to store report channel config: ${toErrorMessage(configError)}`,
+          );
           logger.error("Error stack:", err.stack || "No stack trace");
         }
       }
@@ -717,32 +739,38 @@ export const recordCheckInAction: Action = {
           createdAt: Date.now(),
         };
 
-        logger.info("Storing check-in schedule in memory:", scheduleMemory);
+        logger.info(
+          `Storing check-in schedule in memory: ${stringifyForLog(scheduleMemory)}`,
+        );
         await runtime.createMemory(scheduleMemory, "messages");
         logger.info("Successfully stored check-in schedule in memory");
       } catch (scheduleError: unknown) {
         const err = scheduleError as Error;
-        logger.error("Failed to store check-in schedule:", err);
+        logger.error(
+          `Failed to store check-in schedule: ${toErrorMessage(scheduleError)}`,
+        );
         logger.error("Error stack:", err.stack || "No stack trace");
       }
       // Send success message to the user
       logger.info("Sending success message to user");
       if (callback) {
-        await callback(
-          {
-            text: "✅ Check-in schedule has been successfully created! Team members will be prompted according to your configured schedule.",
-          },
-          [],
-        );
+        await callback({
+          text: "✅ Check-in schedule has been successfully created! Team members will be prompted according to your configured schedule.",
+        });
       }
       logger.info("Check-in setup message sent successfully");
-      return true;
+      return { success: true };
     } catch (error: unknown) {
       const err = error as Error;
       logger.error("=== CHECK-IN HANDLER ERROR ===");
-      logger.error(`Error processing check-in schedule setup: ${err}`);
+      logger.error(
+        `Error processing check-in schedule setup: ${toErrorMessage(error)}`,
+      );
       logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
-      return false;
+      return {
+        success: false,
+        error: toErrorMessage(error),
+      };
     }
   },
   examples: [

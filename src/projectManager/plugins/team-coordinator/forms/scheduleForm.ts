@@ -1,5 +1,9 @@
-import { type Content, logger, type IAgentRuntime } from "@elizaos/core";
 import type { HandlerCallback } from "@elizaos/core";
+import { type Content, type IAgentRuntime, logger } from "@elizaos/core";
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
 
 // Define interfaces for Discord component types
 interface DiscordComponent {
@@ -255,12 +259,14 @@ export async function sendCheckInScheduleForm(
       logger.warn("Components trimmed to 5 to avoid Discord API error");
     }
 
-    await callback(content, []);
+    await callback(content);
     logger.info("Successfully sent check-in schedule form");
   } catch (error: unknown) {
     const err = error as Error;
-    logger.error(`Error sending check-in schedule form: ${err}`);
-    logger.error("Error stack:", err.stack);
+    logger.error(
+      `Error sending check-in schedule form: ${toErrorMessage(error)}`,
+    );
+    logger.error(`Error stack: ${err.stack}`);
     throw error;
   }
 }

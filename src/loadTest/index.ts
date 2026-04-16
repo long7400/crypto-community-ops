@@ -1,27 +1,27 @@
 import {
-  TestSuite,
-  IAgentRuntime,
-  UUID,
   ChannelType,
+  type IAgentRuntime,
   logger,
+  type TestSuite,
+  type UUID,
 } from "@elizaos/core";
-import { v4 as uuidv4 } from "uuid";
-import { LoadTestMetrics, ScaleConfig, SystemMetrics } from "./types";
 import fs from "fs";
+import os from "os";
 import path from "path";
 import { fileURLToPath } from "url";
-import os from "os";
+import { v4 as uuidv4 } from "uuid";
+import type { LoadTestMetrics, ScaleConfig, SystemMetrics } from "./types";
 import {
-  ThresholdLevel,
-  THRESHOLD_CONFIGS,
-  ensureLogsDirectory,
-  generateTimestamp,
-  createLoadTestSummaryHeader,
   createDetailedTestLogHeader,
+  createLoadTestSummaryHeader,
+  ensureLogsDirectory,
   formatBreakingPointNotification,
-  isBreakingPoint,
   formatDetailedMetrics,
   formatSummaryLogLine,
+  generateTimestamp,
+  isBreakingPoint,
+  THRESHOLD_CONFIGS,
+  ThresholdLevel,
 } from "./utils";
 
 /**
@@ -173,9 +173,10 @@ export class AgentLoadTestSuite implements TestSuite {
               );
             } catch (error) {
               breakingPointIdentified = true;
+              const message =
+                error instanceof Error ? error.message : String(error);
               logger.error(
-                `BREAKING POINT: Error running test for ${config.description} with ${thresholdLevel} threshold:`,
-                error,
+                `BREAKING POINT: Error running test for ${config.description} with ${thresholdLevel} threshold: ${message}`,
               );
               fs.appendFileSync(
                 detailedLogFile,
@@ -391,13 +392,19 @@ export class AgentLoadTestSuite implements TestSuite {
               metrics.errorTypes["processing"] =
                 (metrics.errorTypes["processing"] || 0) + 1;
             }
-            logger.error(`Error processing message ${i}:`, timeoutError);
+            const timeoutMessage =
+              timeoutError instanceof Error
+                ? timeoutError.message
+                : String(timeoutError);
+            logger.error(`Error processing message ${i}: ${timeoutMessage}`);
           }
         } catch (sendError) {
           metrics.errorCount++;
           metrics.errorTypes["send_failure"] =
             (metrics.errorTypes["send_failure"] || 0) + 1;
-          logger.error(`Error sending message ${i}:`, sendError);
+          const sendMessage =
+            sendError instanceof Error ? sendError.message : String(sendError);
+          logger.error(`Error sending message ${i}: ${sendMessage}`);
         }
 
         // Check system resources periodically
@@ -440,7 +447,8 @@ export class AgentLoadTestSuite implements TestSuite {
       metrics.memoryUsageEnd = process.memoryUsage().heapUsed / 1024 / 1024;
     } catch (error) {
       metrics.errorCount++;
-      logger.error("Load test failed:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Load test failed: ${message}`);
       throw error;
     }
 
@@ -490,7 +498,8 @@ export class AgentLoadTestSuite implements TestSuite {
       this.systemMetrics.memoryUsage.push(usedMemPercentage);
       this.systemMetrics.timestamp.push(Date.now());
     } catch (error) {
-      logger.error("Error capturing system metrics:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Error capturing system metrics: ${message}`);
     }
   }
 
@@ -515,7 +524,8 @@ export class AgentLoadTestSuite implements TestSuite {
 
       fs.writeFileSync(filePath, content);
     } catch (error) {
-      logger.error("Error writing system metrics:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Error writing system metrics: ${message}`);
     }
   }
 
@@ -609,7 +619,8 @@ export class AgentLoadTestSuite implements TestSuite {
         }
       }
     } catch (error) {
-      logger.error("Error determining optimal scaling:", error);
+      const message = error instanceof Error ? error.message : String(error);
+      logger.error(`Error determining optimal scaling: ${message}`);
       // Return default values in case of error
       return {
         [ThresholdLevel.LOW]: {

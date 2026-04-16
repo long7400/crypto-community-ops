@@ -1,95 +1,111 @@
 // tests/socialMediaManager.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { socialMediaManager } from '../src/socialMediaManager/index';
-import type { IAgentRuntime } from '@elizaos/core';
-import { SocialMediaManagerTestSuite } from './test_suites/SocialMediaManagerTestSuite';
 
-describe('SocialMediaManagerTestSuite', () => {
-  let mockScenarioService: any;
-  let mockRuntime: IAgentRuntime;
+import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { socialMediaManager } from "../src/socialMediaManager/index";
+import { SocialMediaManagerTestSuite } from "./test_suites/SocialMediaManagerTestSuite";
 
-  beforeEach(() => {
-    // Mock scenario service with Vitest's vi.fn()
-    mockScenarioService = {
-      createWorld: vi.fn().mockResolvedValue('world-id'),
-      createRoom: vi.fn().mockResolvedValue('room-id'),
-      addParticipant: vi.fn().mockResolvedValue(true),
-      sendMessage: vi.fn().mockResolvedValue(true),
-      waitForCompletion: vi.fn().mockResolvedValue(true),
-    };
+describe("SocialMediaManagerTestSuite", () => {
+	let mockScenarioService: any;
+	let mockRuntime: IAgentRuntime;
 
-    // Mock runtime environment
-    mockRuntime = {
-      getService: vi.fn().mockReturnValue(mockScenarioService),
-      agentId: 'agent-id',
-    } as unknown as IAgentRuntime;
-  });
+	beforeEach(() => {
+		// Mock scenario service with Vitest's vi.fn()
+		mockScenarioService = {
+			createWorld: vi.fn().mockResolvedValue("world-id"),
+			createRoom: vi.fn().mockResolvedValue("room-id"),
+			addParticipant: vi.fn().mockResolvedValue(true),
+			sendMessage: vi.fn().mockResolvedValue(true),
+			waitForCompletion: vi.fn().mockResolvedValue(true),
+		};
 
-  describe('Core Functionality', () => {
-    it('should complete onboarding process successfully', async () => {
-      const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Onboarding Process');
+		// Mock runtime environment
+		mockRuntime = {
+			getService: vi.fn().mockReturnValue(mockScenarioService),
+			agentId: "agent-id",
+		} as unknown as IAgentRuntime;
+	});
 
-      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
+	describe("Core Functionality", () => {
+		it("should complete onboarding process successfully", async () => {
+			const testSuite = new SocialMediaManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Onboarding Process",
+			);
 
-      // Verify service calls
-      expect(mockScenarioService.createWorld).toHaveBeenCalledWith(
-        'Test Organization',
-        'Test Owner'
-      );
-      expect(mockScenarioService.createRoom).toHaveBeenCalledWith('world-id', 'general');
-      expect(mockScenarioService.addParticipant).toHaveBeenCalledTimes(2);
-      expect(mockScenarioService.sendMessage).toHaveBeenCalled();
-    });
+			await expect(test?.fn(mockRuntime)).resolves.toBeUndefined();
 
-    it('should handle cross-platform post creation', async () => {
-      const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Cross-Platform Post Creation');
+			// Verify service calls
+			expect(mockScenarioService.createWorld).toHaveBeenCalledWith(
+				"Test Organization",
+				"Test Owner",
+			);
+			expect(mockScenarioService.createRoom).toHaveBeenCalledWith(
+				"world-id",
+				"general",
+			);
+			expect(mockScenarioService.addParticipant).toHaveBeenCalledTimes(2);
+			expect(mockScenarioService.sendMessage).toHaveBeenCalled();
+		});
 
-      await test?.fn(mockRuntime);
+		it("should handle cross-platform post creation", async () => {
+			const testSuite = new SocialMediaManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Cross-Platform Post Creation",
+			);
 
-      expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
-        mockRuntime,
-        'world-id',
-        'room-id',
-        'Please create a post about our new product launch for Twitter and Discord'
-      );
-      expect(mockScenarioService.waitForCompletion).toHaveBeenCalledWith(10000);
-    });
+			await test?.fn(mockRuntime);
 
-    it('should manage multiple user queries', async () => {
-      const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Response to User Queries');
+			expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
+				mockRuntime,
+				"world-id",
+				"room-id",
+				"Please create a post about our new product launch for Twitter and Discord",
+			);
+			expect(mockScenarioService.waitForCompletion).toHaveBeenCalledWith(10000);
+		});
 
-      await test?.fn(mockRuntime);
+		it("should manage multiple user queries", async () => {
+			const testSuite = new SocialMediaManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Response to User Queries",
+			);
 
-      expect(mockScenarioService.sendMessage).toHaveBeenCalledTimes(3);
-      expect(mockScenarioService.waitForCompletion).toHaveBeenCalledTimes(3);
-    });
-  });
+			await test?.fn(mockRuntime);
 
-  describe('Error Handling', () => {
-    it('should throw error when missing scenario service', async () => {
-      const brokenRuntime = {
-        ...mockRuntime,
-        getService: vi.fn().mockReturnValue(undefined),
-      };
+			expect(mockScenarioService.sendMessage).toHaveBeenCalledTimes(3);
+			expect(mockScenarioService.waitForCompletion).toHaveBeenCalledTimes(3);
+		});
+	});
 
-      const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Onboarding Process');
+	describe("Error Handling", () => {
+		it("should throw error when missing scenario service", async () => {
+			const brokenRuntime = {
+				...mockRuntime,
+				getService: vi.fn().mockReturnValue(undefined),
+			};
 
-      await expect(test?.fn(brokenRuntime)).rejects.toThrow('Scenario service not found');
-    });
+			const testSuite = new SocialMediaManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Onboarding Process",
+			);
 
-    it('should handle operation timeouts', async () => {
-      mockScenarioService.waitForCompletion.mockResolvedValue(false);
+			await expect(test?.fn(brokenRuntime)).rejects.toThrow(
+				"Scenario service not found",
+			);
+		});
 
-      const testSuite = new SocialMediaManagerTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Onboarding Process');
+		it("should handle operation timeouts", async () => {
+			mockScenarioService.waitForCompletion.mockResolvedValue(false);
 
-      await expect(test?.fn(mockRuntime)).rejects.toThrow(
-        'Agent did not complete onboarding response in time'
-      );
-    });
-  });
+			const testSuite = new SocialMediaManagerTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Onboarding Process",
+			);
+
+			await expect(test?.fn(mockRuntime)).rejects.toThrow(
+				"Agent did not complete onboarding response in time",
+			);
+		});
+	});
 });

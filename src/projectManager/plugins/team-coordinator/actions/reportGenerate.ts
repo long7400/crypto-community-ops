@@ -1,16 +1,30 @@
 import {
   type Action,
+  type ActionResult,
   type Content,
+  createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
-  type UUID,
-  createUniqueUuid,
-  logger,
   type State,
+  type UUID,
 } from "@elizaos/core";
 import type { TeamMemberUpdate } from "../../../types";
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function stringifyForLog(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
 
 export async function generateTeamReport(
   runtime: IAgentRuntime,
@@ -101,7 +115,7 @@ export async function generateTeamReport(
             answers,
           };
         } catch (error) {
-          logger.error("Error parsing answers JSON:", error);
+          logger.error(`Error parsing answers JSON: ${toErrorMessage(error)}`);
           return update;
         }
       });
@@ -121,8 +135,7 @@ export async function generateTeamReport(
       Updates data: ${JSON.stringify(processedUpdates, null, 2)}`;
 
       logger.info(
-        "Generating productivity analysis for team member:",
-        teamMemberName,
+        `Generating productivity analysis for team member: ${teamMemberName}`,
       );
 
       try {
@@ -147,12 +160,14 @@ export async function generateTeamReport(
               report += `▫️ **${question}**: ${answer}\n`;
             }
           } catch (error) {
-            logger.error("Error parsing answers JSON for display:", error);
+            logger.error(
+              `Error parsing answers JSON for display: ${toErrorMessage(error)}`,
+            );
             report += `▫️ Error parsing update details\n`;
           }
         }
       } catch (error) {
-        logger.error("Error generating analysis:", error);
+        logger.error(`Error generating analysis: ${toErrorMessage(error)}`);
         report += "❌ Error generating analysis. Showing raw updates:\n\n";
 
         for (const update of memberUpdates) {
@@ -166,7 +181,9 @@ export async function generateTeamReport(
               report += `▫️ **${question}**: ${answer}\n`;
             }
           } catch (error) {
-            logger.error("Error parsing answers JSON for display:", error);
+            logger.error(
+              `Error parsing answers JSON for display: ${toErrorMessage(error)}`,
+            );
             report += `▫️ Error parsing update details\n`;
           }
         }
@@ -178,7 +195,7 @@ export async function generateTeamReport(
     logger.info("=== GENERATE TEAM REPORT END ===");
     return report;
   } catch (error) {
-    logger.error("Error generating team report:", error);
+    logger.error(`Error generating team report: ${toErrorMessage(error)}`);
     throw error;
   }
 }
@@ -204,21 +221,23 @@ export const generateReport: Action = {
     state: State | undefined,
     options: Record<string, unknown> = {},
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info("=== GENERATE REPORT HANDLER START ===");
 
-      if (!state) return false;
+      if (!state) {
+        return { success: false, error: "Missing state for report generation" };
+      }
       if (!callback) {
         logger.warn("No callback function provided");
-        return false;
+        return { success: false, error: "No callback function provided" };
       }
 
       // Extract standup type from message text
       const text = message.content?.text as string;
       if (!text) {
         logger.warn("No text content found in message");
-        return false;
+        return { success: false, error: "No text content found in message" };
       }
       let standupType: string;
 
@@ -250,18 +269,20 @@ export const generateReport: Action = {
             text: template,
             source: "discord",
           };
-          await callback(promptContent, []);
-          return true;
+          await callback(promptContent);
+          return { success: true };
         }
 
         standupType = ((state.standupType as string) || parsedType)
           ?.toLowerCase()
           ?.trim();
 
-        logger.info("Generating report with parameters:", {
-          standupType,
-          roomId: message.roomId,
-        });
+        logger.info(
+          `Generating report with parameters: ${stringifyForLog({
+            standupType,
+            roomId: message.roomId,
+          })}`,
+        );
 
         // Validate standup type with more flexible matching
         const validTypes = [
@@ -274,25 +295,21 @@ export const generateReport: Action = {
         const isValidType = validTypes.some((type) => standupType === type);
 
         if (!isValidType) {
-          await callback(
-            {
-              text: "Invalid check-in type. Please select one of: Daily Standup, Sprint Check-in, Mental Health Check-in, Project Status Update, or Team Retrospective",
-              source: "discord",
-            },
-            [],
-          );
-          return false;
+          await callback({
+            text: "Invalid check-in type. Please select one of: Daily Standup, Sprint Check-in, Mental Health Check-in, Project Status Update, or Team Retrospective",
+            source: "discord",
+          });
+          return { success: false, error: "Invalid check-in type" };
         }
       } catch (aiError) {
-        logger.error("Error using AI to parse input:", aiError);
-        await callback(
-          {
-            text: "I couldn't understand the check-in type. Please try again with a valid type.",
-            source: "discord",
-          },
-          [],
+        logger.error(
+          `Error using AI to parse input: ${toErrorMessage(aiError)}`,
         );
-        return false;
+        await callback({
+          text: "I couldn't understand the check-in type. Please try again with a valid type.",
+          source: "discord",
+        });
+        return { success: false, error: "Failed to parse standup type" };
       }
 
       // Generate the report
@@ -307,26 +324,28 @@ export const generateReport: Action = {
         source: "discord",
       };
 
-      await callback(content, []);
+      await callback(content);
       logger.info("=== GENERATE REPORT HANDLER END ===");
-      return true;
+      return { success: true };
     } catch (error: unknown) {
       const err = error as Error;
       logger.error("=== GENERATE REPORT HANDLER ERROR ===");
-      logger.error("Error details:", {
-        name: err.name || "Unknown error",
-        message: err.message || "No error message",
-        stack: err.stack || "No stack trace",
-      });
+      logger.error(
+        `Error details: ${stringifyForLog({
+          name: err.name || "Unknown error",
+          message: err.message || "No error message",
+          stack: err.stack || "No stack trace",
+        })}`,
+      );
 
       if (callback) {
         const errorContent: Content = {
           text: "❌ An error occurred while generating the report. Please try again.",
           source: "discord",
         };
-        await callback(errorContent, []);
+        await callback(errorContent);
       }
-      return false;
+      return { success: false, error: toErrorMessage(error) };
     }
   },
   examples: [

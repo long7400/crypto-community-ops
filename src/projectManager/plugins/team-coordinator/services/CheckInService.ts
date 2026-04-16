@@ -1,19 +1,32 @@
 import {
+  ChannelType,
+  createUniqueUuid,
   type IAgentRuntime,
   logger,
   type Memory,
-  createUniqueUuid,
   Service,
-  ChannelType,
   type UUID,
 } from "@elizaos/core";
 import type {
   ButtonInteraction,
-  StringSelectMenuInteraction,
   SelectMenuInteraction,
+  StringSelectMenuInteraction,
   User,
 } from "discord.js";
 import type { CheckInSchedule } from "../../../types";
+
+function toErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function stringifyForLog(value: unknown): string {
+  if (typeof value === "string") return value;
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
 
 // Extension of CheckInSchedule with additional fields
 interface ExtendedCheckInSchedule extends CheckInSchedule {
@@ -38,6 +51,19 @@ type BaseInteraction =
 // Define our custom interaction type
 interface ExtendedInteraction {
   customId: string;
+  isButton?: () => boolean;
+  isModalSubmit?: () => boolean;
+  isRepliable?: () => boolean;
+  replied?: boolean;
+  deferred?: boolean;
+  reply?: (options: {
+    content: string;
+    ephemeral?: boolean;
+  }) => Promise<unknown>;
+  followUp?: (options: {
+    content: string;
+    ephemeral?: boolean;
+  }) => Promise<unknown>;
   user?: User;
   member?: { user?: { id: string } };
   selections?: {
@@ -71,6 +97,19 @@ export class CheckInService extends Service {
     super(runtime);
   }
 
+  private async respondToInteraction(
+    interaction: ExtendedInteraction,
+    content: string,
+    ephemeral = true,
+  ): Promise<void> {
+    if (!interaction?.isRepliable?.()) return;
+    if (interaction.deferred || interaction.replied) {
+      await interaction.followUp?.({ content, ephemeral });
+      return;
+    }
+    await interaction.reply?.({ content, ephemeral });
+  }
+
   async start(): Promise<void> {
     logger.info("=== INITIALIZING CHECKIN SERVICE ===");
     await this.initialize();
@@ -95,27 +134,30 @@ export class CheckInService extends Service {
     this.runtime.registerEvent("DISCORD_INTERACTION", async (event) => {
       try {
         logger.info("=== DISCORD INTERACTION RECEIVED ===");
-        logger.info("Raw event:", event);
+        logger.info(`Raw event: ${stringifyForLog(event)}`);
 
         if (!event) {
           logger.error("Event is undefined or null");
           return;
         }
 
-        const { interaction } = event;
+        const interaction = (event as { interaction?: ExtendedInteraction })
+          .interaction;
         if (!interaction) {
-          logger.error("No interaction in event:", event);
+          logger.error(`No interaction in event: ${stringifyForLog(event)}`);
           return;
         }
 
-        logger.info("Basic interaction info:", {
-          exists: !!interaction,
-          customId: interaction?.customId || "NO_CUSTOM_ID",
-          type: interaction?.type || "NO_TYPE",
-          hasUser: !!interaction?.user,
-          hasSelections: !!interaction?.selections,
-          allFields: Object.keys(interaction || {}),
-        });
+        logger.info(
+          `Basic interaction info: ${stringifyForLog({
+            exists: !!interaction,
+            customId: interaction?.customId || "NO_CUSTOM_ID",
+            type: (interaction as { type?: unknown })?.type || "NO_TYPE",
+            hasUser: !!interaction?.user,
+            hasSelections: !!interaction?.selections,
+            allFields: Object.keys(interaction || {}),
+          })}`,
+        );
 
         // Check if this is a button interaction
         if (interaction.isButton?.()) {
@@ -139,14 +181,15 @@ export class CheckInService extends Service {
           );
         } else {
           logger.info(
-            "CustomId did not match. Received:",
-            interaction.customId,
+            `CustomId did not match. Received: ${interaction.customId}`,
           );
         }
       } catch (error: unknown) {
         const err = error as Error;
-        logger.error("Error in DISCORD_INTERACTION event handler:", err);
-        logger.error("Error stack:", err.stack);
+        logger.error(
+          `Error in DISCORD_INTERACTION event handler: ${toErrorMessage(error)}`,
+        );
+        logger.error(`Error stack: ${err.stack}`);
       }
     });
 
@@ -209,38 +252,38 @@ export class CheckInService extends Service {
       try {
         if (userId) {
           userDetails = await discordService.client.users.fetch(userId);
-          logger.info("Fetched user details:", {
-            id: userDetails.id,
-            username: userDetails.username,
-            displayName: userDetails.displayName,
-            bot: userDetails.bot,
-            createdAt: userDetails.createdAt,
-          });
+          logger.info(
+            `Fetched user details: ${stringifyForLog({
+              id: userDetails.id,
+              username: userDetails.username,
+              displayName: userDetails.displayName,
+              bot: userDetails.bot,
+              createdAt: userDetails.createdAt,
+            })}`,
+          );
         } else {
           logger.error("No user ID found in interaction");
         }
       } catch (userError: unknown) {
-        const err = userError as Error;
-        logger.error("Error fetching user details:", err);
-        logger.error("User ID that caused error:", userId);
+        logger.error(
+          `Error fetching user details: ${toErrorMessage(userError)}`,
+        );
+        logger.error(`User ID that caused error: ${userId}`);
       }
 
       logger.info(
-        "Full interaction details:",
-        JSON.stringify(interaction, null, 2),
+        `Full interaction details: ${JSON.stringify(interaction, null, 2)}`,
       );
 
-      logger.info("Processing submission from user:", userId);
-      logger.info("Form selections:", selections);
+      logger.info(`Processing submission from user: ${userId}`);
+      logger.info(`Form selections: ${stringifyForLog(selections)}`);
 
       if (!selections) {
         logger.warn("No form data found in submission");
-        await this.runtime.emitEvent("DISCORD_RESPONSE", {
-          type: "REPLY",
-          content: "No form data received. Please try again.",
-          ephemeral: true,
+        await this.respondToInteraction(
           interaction,
-        });
+          "No form data received. Please try again.",
+        );
         return;
       }
 
@@ -265,19 +308,21 @@ export class CheckInService extends Service {
       const roomId = createUniqueUuid(this.runtime, "check-in-schedules");
       await this.storeCheckInSchedule(roomId, schedule);
 
-      logger.info("Successfully stored check-in schedule:", schedule);
+      logger.info(
+        `Successfully stored check-in schedule: ${stringifyForLog(schedule)}`,
+      );
 
       // Send confirmation message
-      await this.runtime.emitEvent("DISCORD_RESPONSE", {
-        type: "REPLY",
-        content: `✅ Check-in schedule created!\nType: ${schedule.checkInType}\nFrequency: ${schedule.frequency}\nTime: ${schedule.checkInTime}`,
-        ephemeral: true,
+      await this.respondToInteraction(
         interaction,
-      });
+        `✅ Check-in schedule created!\nType: ${schedule.checkInType}\nFrequency: ${schedule.frequency}\nTime: ${schedule.checkInTime}`,
+      );
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error("Error in handleCheckInSubmission:", err);
-      logger.error("Error stack:", err.stack);
+      logger.error(
+        `Error in handleCheckInSubmission: ${toErrorMessage(error)}`,
+      );
+      logger.error(`Error stack: ${err.stack}`);
 
       try {
         // Check if this is a duplicate key error
@@ -287,24 +332,20 @@ export class CheckInService extends Service {
           "constraint" in err &&
           err.constraint === "memories_pkey"
         ) {
-          await this.runtime.emitEvent("DISCORD_RESPONSE", {
-            type: "REPLY",
-            content:
-              "⚠️ This check-in schedule has already been submitted. You can either:\n• Create a new check-in schedule with different settings\n• Update the existing schedule",
-            ephemeral: true,
+          await this.respondToInteraction(
             interaction,
-          });
+            "⚠️ This check-in schedule has already been submitted. You can either:\n• Create a new check-in schedule with different settings\n• Update the existing schedule",
+          );
         } else {
-          await this.runtime.emitEvent("DISCORD_RESPONSE", {
-            type: "REPLY",
-            content: "Failed to save check-in schedule. Please try again.",
-            ephemeral: true,
+          await this.respondToInteraction(
             interaction,
-          });
+            "Failed to save check-in schedule. Please try again.",
+          );
         }
       } catch (replyError: unknown) {
-        const replyErr = replyError as Error;
-        logger.error("Failed to send error message:", replyErr);
+        logger.error(
+          `Failed to send error message: ${toErrorMessage(replyError)}`,
+        );
       }
     }
   }
@@ -339,12 +380,15 @@ export class CheckInService extends Service {
         createdAt: timestamp,
       };
 
-      logger.info("Storing check-in schedule in memory:", memory);
+      logger.info(
+        `Storing check-in schedule in memory: ${stringifyForLog(memory)}`,
+      );
       await this.runtime.createMemory(memory, "messages");
       logger.info("Successfully stored check-in schedule in memory");
     } catch (error: unknown) {
-      const err = error as Error;
-      logger.error("Failed to store check-in schedule:", err);
+      logger.error(
+        `Failed to store check-in schedule: ${toErrorMessage(error)}`,
+      );
       throw error;
     }
   }
@@ -356,8 +400,7 @@ export class CheckInService extends Service {
     try {
       logger.info("=== HANDLING REPORT CHANNEL SUBMISSION ===");
       logger.info(
-        "Full interaction object:",
-        JSON.stringify(interaction, null, 2),
+        `Full interaction object: ${JSON.stringify(interaction, null, 2)}`,
       );
 
       // Parse server info from form data
@@ -365,20 +408,23 @@ export class CheckInService extends Service {
       try {
         if (interaction.selections?.server_info?.[0]) {
           serverInfo = JSON.parse(interaction.selections.server_info[0]);
-          logger.info("Parsed server info:", serverInfo);
+          logger.info(`Parsed server info: ${stringifyForLog(serverInfo)}`);
         }
       } catch (parseError: unknown) {
-        const err = parseError as Error;
-        logger.error("Error parsing server info:", err);
+        logger.error(
+          `Error parsing server info: ${toErrorMessage(parseError)}`,
+        );
       }
 
       const selections = interaction.selections;
-      logger.info("Form selections:", selections);
+      logger.info(`Form selections: ${stringifyForLog(selections)}`);
 
       if (!selections?.report_channel?.[0]) {
         logger.warn("Missing report channel selection");
-        logger.warn("Server ID:", serverInfo?.serverId);
-        logger.warn("Report channel selection:", selections?.report_channel);
+        logger.warn(`Server ID: ${serverInfo?.serverId}`);
+        logger.warn(
+          `Report channel selection: ${stringifyForLog(selections?.report_channel)}`,
+        );
         return;
       }
 
@@ -391,20 +437,19 @@ export class CheckInService extends Service {
 
       await this.storeReportChannelConfig(config);
       logger.info(
-        `Report channel configured for server ${serverInfo?.serverId}:`,
-        config,
+        `Report channel configured for server ${serverInfo?.serverId}: ${stringifyForLog(config)}`,
       );
 
-      await this.runtime.emitEvent("DISCORD_RESPONSE", {
-        type: "REPLY",
-        content: "✅ Report channel has been configured successfully!",
-        ephemeral: true,
+      await this.respondToInteraction(
         interaction,
-      });
+        "✅ Report channel has been configured successfully!",
+      );
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error("Error in handleReportChannelSubmission:", err);
-      logger.error("Error stack:", err.stack);
+      logger.error(
+        `Error in handleReportChannelSubmission: ${toErrorMessage(error)}`,
+      );
+      logger.error(`Error stack: ${err.stack}`);
     }
   }
 
@@ -440,8 +485,9 @@ export class CheckInService extends Service {
       }
       logger.info("Successfully stored report channel config");
     } catch (error: unknown) {
-      const err = error as Error;
-      logger.error("Failed to store report channel config:", err);
+      logger.error(
+        `Failed to store report channel config: ${toErrorMessage(error)}`,
+      );
       throw error;
     }
   }
@@ -476,8 +522,9 @@ export class CheckInService extends Service {
         }
       }
     } catch (error: unknown) {
-      const err = error as Error;
-      logger.error("Error loading report channel configs:", err);
+      logger.error(
+        `Error loading report channel configs: ${toErrorMessage(error)}`,
+      );
     }
   }
 
