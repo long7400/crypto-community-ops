@@ -1,36 +1,49 @@
-import fs from 'node:fs';
-import os from 'node:os';
-import path from 'node:path';
-import type { TestCase } from '@elizaos/core';
+import fs from "node:fs";
+import os from "node:os";
+import path from "node:path";
+import type { TestCase } from "@elizaos/core";
 import {
   AgentRuntime,
   type Character,
   type IAgentRuntime,
-  type TestSuite,
   logger,
   stringToUuid,
-} from '@elizaos/core';
-import dotenv from 'dotenv';
-import { afterAll, beforeAll, describe, it } from 'vitest';
-import project from './index';
-dotenv.config({ path: '../../.env' });
+  type TestSuite,
+} from "@elizaos/core";
+import dotenv from "dotenv";
+import { afterAll, beforeAll, describe, it } from "vitest";
+import project from "./index";
+
+dotenv.config({ path: "../../.env" });
 
 const TEST_TIMEOUT = 300000;
 
-const defaultCharacter: Character = project.agents[0].character;
+function ensureTestCharacter(
+  character: Character | Partial<Character>,
+  overrides: Partial<Character> = {},
+): Character {
+  return {
+    ...character,
+    ...overrides,
+    name: overrides.name ?? character.name ?? "TestCharacter",
+    bio: overrides.bio ?? character.bio ?? "Test character bio",
+    plugins: overrides.plugins ?? character.plugins ?? [],
+  };
+}
 
-const elizaOpenAIFirst: Character = {
-  ...project.agents[0].character,
-  name: 'ElizaOpenAIFirst',
+const defaultCharacter = ensureTestCharacter(project.agents[0].character);
+
+const elizaOpenAIFirst = ensureTestCharacter(project.agents[0].character, {
+  name: "ElizaOpenAIFirst",
   plugins: [
-    '@elizaos/plugin-sql',
-    '@elizaos/plugin-openai', // OpenAI first, embedding size = 1536
-    '@elizaos/plugin-elevenlabs',
-    '@elizaos/plugin-pdf',
-    '@elizaos/plugin-video-understanding',
-    '@elizaos/plugin-storage-s3',
+    "@elizaos/plugin-sql",
+    "@elizaos/plugin-openai", // OpenAI first, embedding size = 1536
+    "@elizaos/plugin-elevenlabs",
+    "@elizaos/plugin-pdf",
+    "@elizaos/plugin-video-understanding",
+    "@elizaos/plugin-storage-s3",
   ],
-};
+});
 
 const agentRuntimes = new Map<string, IAgentRuntime>();
 
@@ -47,16 +60,23 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
 
     const runtime = new AgentRuntime({
       character,
-      fetch: async (url: string, options: any) => {
-        logger.debug(`Test fetch: ${url}`);
-        return fetch(url, options);
+      fetch: async (input: RequestInfo | URL, init?: RequestInit) => {
+        const requestTarget =
+          typeof input === "string"
+            ? input
+            : input instanceof URL
+              ? input.toString()
+              : input.url;
+
+        logger.debug(`Test fetch: ${requestTarget}`);
+        return fetch(input, init);
       },
     });
 
-    const envPath = path.join(process.cwd(), '.env');
+    const envPath = path.join(process.cwd(), ".env");
 
     // try to read a file in the current directory titled .env
-    let postgresUrl = null;
+    let postgresUrl: string | undefined;
     // Try to find .env file by recursively checking parent directories
     let currentPath = envPath;
     let depth = 0;
@@ -64,11 +84,13 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
 
     while (depth < maxDepth && currentPath.includes(path.sep)) {
       if (fs.existsSync(currentPath)) {
-        const env = fs.readFileSync(currentPath, 'utf8');
-        const envVars = env.split('\n').filter((line) => line.trim() !== '');
-        const postgresUrlLine = envVars.find((line) => line.startsWith('POSTGRES_URL='));
+        const env = fs.readFileSync(currentPath, "utf8");
+        const envVars = env.split("\n").filter((line) => line.trim() !== "");
+        const postgresUrlLine = envVars.find((line) =>
+          line.startsWith("POSTGRES_URL="),
+        );
         if (postgresUrlLine) {
-          postgresUrl = postgresUrlLine.split('=')[1].trim();
+          postgresUrl = postgresUrlLine.split("=")[1].trim();
           break;
         }
       }
@@ -78,17 +100,17 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
       const currentDir = path.dirname(currentPath);
       // Then move up one directory from there
       const parentDir = path.dirname(currentDir);
-      currentPath = path.join(parentDir, '.env');
+      currentPath = path.join(parentDir, ".env");
       depth++;
     }
 
     // Implement the database directory setup logic
-    let dataDir = './elizadb'; // Default fallback path
+    let dataDir = "./elizadb"; // Default fallback path
     try {
       // 1. Get the user's home directory
       const homeDir = os.homedir();
-      const elizaDir = path.join(homeDir, '.eliza');
-      const elizaDbDir = path.join(elizaDir, 'db');
+      const elizaDir = path.join(homeDir, ".eliza");
+      const elizaDbDir = path.join(elizaDir, "db");
 
       // Debug information
       console.log(`Setting up database directory at: ${elizaDbDir}`);
@@ -110,21 +132,28 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
       console.log(`Using database directory: ${dataDir}`);
     } catch (error) {
       console.warn(
-        'Failed to create database directory in home directory, using fallback location:',
-        error
+        "Failed to create database directory in home directory, using fallback location:",
+        error,
       );
       // 9. On failure, use the fallback path
     }
 
-    const options = {
-      dataDir: dataDir,
-      postgresUrl,
-    };
+    const options = postgresUrl
+      ? {
+          dataDir,
+          postgresUrl,
+        }
+      : {
+          dataDir,
+        };
 
-    const drizzleAdapter = await import('@elizaos/plugin-sql');
-    const adapter = drizzleAdapter.createDatabaseAdapter(options, runtime.agentId);
+    const drizzleAdapter = await import("@elizaos/plugin-sql");
+    const adapter = drizzleAdapter.createDatabaseAdapter(
+      options,
+      runtime.agentId,
+    );
     if (!adapter) {
-      throw new Error('No database adapter found in default drizzle plugin');
+      throw new Error("No database adapter found in default drizzle plugin");
     }
     runtime.registerDatabaseAdapter(adapter);
 
@@ -137,7 +166,7 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
         break;
       } catch (error) {
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        logger.error('Waiting for tables to be created...');
+        logger.error("Waiting for tables to be created...");
       }
     }
 
@@ -146,12 +175,17 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
     logger.info(`Test runtime initialized for ${character.name}`);
 
     // Log expected embedding dimension based on plugins
-    const hasOpenAIFirst = character.plugins[0] === '@elizaos/plugin-openai';
+    const hasOpenAIFirst = character.plugins?.[0] === "@elizaos/plugin-openai";
     const expectedDimension = hasOpenAIFirst ? 1536 : 384;
-    logger.info(`Expected embedding dimension for ${character.name}: ${expectedDimension}`);
+    logger.info(
+      `Expected embedding dimension for ${character.name}: ${expectedDimension}`,
+    );
     return runtime;
   } catch (error) {
-    logger.error(`Failed to initialize test runtime for ${character.name}:`, error);
+    logger.error(
+      `Failed to initialize test runtime for ${character.name}:`,
+      error,
+    );
     throw error;
   }
 }
@@ -178,29 +212,29 @@ afterAll(async () => {
 });
 
 // Test suite for each character
-describe('Multi-Character Plugin Tests', () => {
+describe("Multi-Character Plugin Tests", () => {
   it(
-    'should run tests for Default Character',
+    "should run tests for Default Character",
     async () => {
       const runtime = agentRuntimes.get(defaultCharacter.name);
-      if (!runtime) throw new Error('Runtime not found for Default Character');
+      if (!runtime) throw new Error("Runtime not found for Default Character");
 
       const testRunner = new TestRunner(runtime);
       await testRunner.runPluginTests();
     },
-    TEST_TIMEOUT
+    TEST_TIMEOUT,
   );
 
   it(
-    'should run tests for ElizaOpenAIFirst (1536 dimension)',
+    "should run tests for ElizaOpenAIFirst (1536 dimension)",
     async () => {
-      const runtime = agentRuntimes.get('ElizaOpenAIFirst');
-      if (!runtime) throw new Error('Runtime not found for ElizaOpenAIFirst');
+      const runtime = agentRuntimes.get("ElizaOpenAIFirst");
+      if (!runtime) throw new Error("Runtime not found for ElizaOpenAIFirst");
 
       const testRunner = new TestRunner(runtime);
       await testRunner.runPluginTests();
     },
-    TEST_TIMEOUT
+    TEST_TIMEOUT,
   );
 });
 
@@ -232,7 +266,7 @@ interface TestResult {
   file: string;
   suite: string;
   name: string;
-  status: 'passed' | 'failed';
+  status: "passed" | "failed";
   error?: Error;
 }
 
@@ -244,8 +278,8 @@ interface TestResult {
  * @property {string} Failed - Indicates that the test has failed.
  */
 enum TestStatus {
-  Passed = 'passed',
-  Failed = 'failed',
+  Passed = "passed",
+  Failed = "failed",
 }
 
 /**
@@ -280,7 +314,11 @@ class TestRunner {
    * @param {string} suite - The suite the test case belongs to.
    * @returns {Promise<void>} - A Promise that resolves once the test case has been run.
    */
-  private async runTestCase(test: TestCase, file: string, suite: string): Promise<void> {
+  private async runTestCase(
+    test: TestCase,
+    file: string,
+    suite: string,
+  ): Promise<void> {
     const startTime = performance.now();
     try {
       await test.fn(this.runtime);
@@ -292,7 +330,9 @@ class TestRunner {
       this.stats.failed++;
       logger.error(`✗ ${test.name}`);
       logger.error(error);
-      this.addTestResult(file, suite, test.name, TestStatus.Failed, error);
+      const testError =
+        error instanceof Error ? error : new Error(String(error));
+      this.addTestResult(file, suite, test.name, TestStatus.Failed, testError);
     }
   }
 
@@ -309,7 +349,7 @@ class TestRunner {
     suite: string,
     name: string,
     status: TestStatus,
-    error?: Error
+    error?: Error,
   ) {
     if (!this.testResults.has(file)) {
       this.testResults.set(file, []);
@@ -337,7 +377,7 @@ class TestRunner {
    * @returns {Promise<TestStats>} The test statistics object.
    */
   public async runPluginTests(): Promise<TestStats> {
-    console.log('*** Running plugin tests...');
+    console.log("*** Running plugin tests...");
     const plugins = this.runtime.plugins;
 
     for (const plugin of plugins) {
@@ -345,7 +385,9 @@ class TestRunner {
         logger.info(`Running tests for plugin: ${plugin.name}`);
         const pluginTests = plugin.tests;
         // Handle both single suite and array of suites
-        const testSuites = Array.isArray(pluginTests) ? pluginTests : [pluginTests];
+        const testSuites = Array.isArray(pluginTests)
+          ? pluginTests
+          : [pluginTests];
 
         for (const suite of testSuites) {
           if (suite) {
@@ -361,7 +403,7 @@ class TestRunner {
 
     this.logTestSummary();
     if (this.stats.failed > 0) {
-      throw new Error('An error occurred during plugin tests.');
+      throw new Error("An error occurred during plugin tests.");
     }
     return this.stats;
   }
@@ -371,39 +413,49 @@ class TestRunner {
    */
   private logTestSummary(): void {
     const COLORS = {
-      reset: '\x1b[0m',
-      red: '\x1b[31m',
-      green: '\x1b[32m',
-      yellow: '\x1b[33m',
-      blue: '\x1b[34m',
-      magenta: '\x1b[35m',
-      cyan: '\x1b[36m',
-      gray: '\x1b[90m',
-      bold: '\x1b[1m',
-      underline: '\x1b[4m',
+      reset: "\x1b[0m",
+      red: "\x1b[31m",
+      green: "\x1b[32m",
+      yellow: "\x1b[33m",
+      blue: "\x1b[34m",
+      magenta: "\x1b[35m",
+      cyan: "\x1b[36m",
+      gray: "\x1b[90m",
+      bold: "\x1b[1m",
+      underline: "\x1b[4m",
     };
 
-    const colorize = (text: string, color: keyof typeof COLORS, bold = false): string => {
-      return `${bold ? COLORS.bold : ''}${COLORS[color]}${text}${COLORS.reset}`;
+    const colorize = (
+      text: string,
+      color: keyof typeof COLORS,
+      bold = false,
+    ): string => {
+      return `${bold ? COLORS.bold : ""}${COLORS[color]}${text}${COLORS.reset}`;
     };
 
     const printSectionHeader = (title: string, color: keyof typeof COLORS) => {
-      console.log(colorize(`\n${'⎯'.repeat(25)}  ${title} ${'⎯'.repeat(25)}\n`, color, true));
+      console.log(
+        colorize(
+          `\n${"⎯".repeat(25)}  ${title} ${"⎯".repeat(25)}\n`,
+          color,
+          true,
+        ),
+      );
     };
 
     const printTestSuiteSummary = () => {
-      printSectionHeader('Test Suites', 'cyan');
+      printSectionHeader("Test Suites", "cyan");
 
       let failedTestSuites = 0;
       this.testResults.forEach((tests, file) => {
-        const failed = tests.filter((t) => t.status === 'failed').length;
+        const failed = tests.filter((t) => t.status === "failed").length;
         const total = tests.length;
 
         if (failed > 0) {
           failedTestSuites++;
-          console.log(` ${colorize('❯', 'yellow')} ${file} (${total})`);
+          console.log(` ${colorize("❯", "yellow")} ${file} (${total})`);
         } else {
-          console.log(` ${colorize('✓', 'green')} ${file} (${total})`);
+          console.log(` ${colorize("✓", "green")} ${file} (${total})`);
         }
 
         const groupedBySuite = new Map<string, TestResult[]>();
@@ -415,16 +467,22 @@ class TestRunner {
         });
 
         groupedBySuite.forEach((suiteTests, suite) => {
-          const failed = suiteTests.filter((t) => t.status === 'failed').length;
+          const failed = suiteTests.filter((t) => t.status === "failed").length;
           if (failed > 0) {
-            console.log(`   ${colorize('❯', 'yellow')} ${suite} (${suiteTests.length})`);
+            console.log(
+              `   ${colorize("❯", "yellow")} ${suite} (${suiteTests.length})`,
+            );
             suiteTests.forEach((test) => {
               const symbol =
-                test.status === 'passed' ? colorize('✓', 'green') : colorize('×', 'red');
+                test.status === "passed"
+                  ? colorize("✓", "green")
+                  : colorize("×", "red");
               console.log(`     ${symbol} ${test.name}`);
             });
           } else {
-            console.log(`   ${colorize('✓', 'green')} ${suite} (${suiteTests.length})`);
+            console.log(
+              `   ${colorize("✓", "green")} ${suite} (${suiteTests.length})`,
+            );
           }
         });
       });
@@ -433,34 +491,42 @@ class TestRunner {
     };
 
     const printFailedTests = () => {
-      printSectionHeader('Failed Tests', 'red');
+      printSectionHeader("Failed Tests", "red");
 
       this.testResults.forEach((tests) => {
         tests.forEach((test) => {
-          if (test.status === 'failed') {
-            console.log(` ${colorize('FAIL', 'red')} ${test.file} > ${test.suite} > ${test.name}`);
-            console.log(` ${colorize(`AssertionError: ${test.error?.message}`, 'red')}`);
-            console.log(`\n${colorize('⎯'.repeat(66), 'red')}\n`);
+          if (test.status === "failed") {
+            console.log(
+              ` ${colorize("FAIL", "red")} ${test.file} > ${test.suite} > ${test.name}`,
+            );
+            console.log(
+              ` ${colorize(`AssertionError: ${test.error?.message}`, "red")}`,
+            );
+            console.log(`\n${colorize("⎯".repeat(66), "red")}\n`);
           }
         });
       });
     };
 
     const printTestSummary = (failedTestSuites: number) => {
-      printSectionHeader('Test Summary', 'cyan');
+      printSectionHeader("Test Summary", "cyan");
 
       console.log(
-        ` ${colorize('Test Suites:', 'gray')} ${
-          failedTestSuites > 0 ? colorize(`${failedTestSuites} failed | `, 'red') : ''
+        ` ${colorize("Test Suites:", "gray")} ${
+          failedTestSuites > 0
+            ? colorize(`${failedTestSuites} failed | `, "red")
+            : ""
         }${colorize(
           `${this.testResults.size - failedTestSuites} passed`,
-          'green'
-        )} (${this.testResults.size})`
+          "green",
+        )} (${this.testResults.size})`,
       );
       console.log(
-        ` ${colorize('      Tests:', 'gray')} ${
-          this.stats.failed > 0 ? colorize(`${this.stats.failed} failed | `, 'red') : ''
-        }${colorize(`${this.stats.passed} passed`, 'green')} (${this.stats.total})`
+        ` ${colorize("      Tests:", "gray")} ${
+          this.stats.failed > 0
+            ? colorize(`${this.stats.failed} failed | `, "red")
+            : ""
+        }${colorize(`${this.stats.passed} passed`, "green")} (${this.stats.total})`,
       );
     };
 

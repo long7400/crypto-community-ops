@@ -10,7 +10,7 @@ import {
   type Memory,
   type State,
   logger,
-} from '@elizaos/core';
+} from "@elizaos/core";
 /**
  * Action to greet new users in the configured channel
  * @typedef {Object} Action
@@ -22,40 +22,47 @@ import {
  * @property {ActionExample[][]} examples - Array of examples for the action
  */
 export const greetAction: Action = {
-  name: 'GREET_NEW_PERSON',
-  similes: ['WELCOME_USER', 'SAY_HELLO', 'INTRODUCE'],
-  description: 'Greets new users in the configured channel',
-  validate: async (runtime: IAgentRuntime, message: Memory, state: State | undefined): Promise<boolean> => {
+  name: "GREET_NEW_PERSON",
+  similes: ["WELCOME_USER", "SAY_HELLO", "INTRODUCE"],
+  description: "Greets new users in the configured channel",
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State | undefined,
+  ): Promise<boolean> => {
     if (!state) return false;
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {
-      throw new Error('No room found');
+      throw new Error("No room found");
     }
 
     const serverId = room.serverId;
 
     if (!serverId) {
-      throw new Error('No server ID found 1');
+      throw new Error("No server ID found 1");
     }
 
     try {
       // Check if greeting is enabled for this server
-      const settings = await runtime.getCache<any>(`server_${serverId}_settings_greet`);
+      const settings = await runtime.getCache<any>(
+        `server_${serverId}_settings_greet`,
+      );
 
       if (!settings?.enabled) {
         return false;
       }
 
       // Check if this is a new user join event or command to greet
-      const isNewUser = message.content.text?.includes('joined the server') || false;
+      const isNewUser =
+        message.content.text?.includes("joined the server") || false;
       const isGreetCommand =
-        message.content.text?.toLowerCase()?.includes('greet') ||
-        message.content.text?.toLowerCase()?.includes('welcome') ||
+        message.content.text?.toLowerCase()?.includes("greet") ||
+        message.content.text?.toLowerCase()?.includes("welcome") ||
         false;
 
       return isNewUser || isGreetCommand;
     } catch (error) {
-      logger.error('Error validating greet action:', error);
+      logger.error("Error validating greet action:", error);
       return false;
     }
   },
@@ -65,26 +72,28 @@ export const greetAction: Action = {
     message: Memory,
     state: State | undefined,
     _options: any,
-    callback: HandlerCallback | undefined
+    callback: HandlerCallback | undefined,
   ): Promise<void> => {
     if (!state) return;
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {
-      throw new Error('No room found');
+      throw new Error("No room found");
     }
 
     const serverId = room.serverId;
 
     if (!serverId) {
-      throw new Error('No server ID found 2');
+      throw new Error("No server ID found 2");
     }
 
     try {
       // Get greeting settings
-      const settings = await runtime.getCache<any>(`server_${serverId}_settings_greet`);
+      const settings = await runtime.getCache<any>(
+        `server_${serverId}_settings_greet`,
+      );
 
       if (!settings?.enabled || !settings.channelId) {
-        logger.error('Greeting settings not properly configured');
+        logger.error("Greeting settings not properly configured");
         await runtime.createMemory(
           {
             entityId: runtime.agentId,
@@ -93,11 +102,11 @@ export const greetAction: Action = {
             content: {
               thought:
                 "Greeting settings were not properly configured so I couldn't greet the new person",
-              actions: ['GREET_NEW_PERSON'],
-              result: 'failed',
+              actions: ["GREET_NEW_PERSON"],
+              result: "failed",
             },
           },
-          'messages'
+          "messages",
         );
         return;
       }
@@ -109,8 +118,8 @@ export const greetAction: Action = {
 
       const content: Content = {
         text: greeting,
-        actions: ['GREET_NEW_PERSON'],
-        source: 'discord',
+        actions: ["GREET_NEW_PERSON"],
+        source: "discord",
       };
 
       // Create memory of greeting
@@ -122,46 +131,46 @@ export const greetAction: Action = {
           content,
           createdAt: Date.now(),
         },
-        'messages'
+        "messages",
       );
 
       // Send greeting
       await callback?.(content);
     } catch (error) {
-      logger.error('Error in greet handler:', error);
+      logger.error("Error in greet handler:", error);
     }
   },
 
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: '{{name2}} joined the server',
-          source: 'discord',
+          text: "{{name2}} joined the server",
+          source: "discord",
         },
       },
       {
-        name: '{{name3}}',
+        name: "{{name3}}",
         content: {
           text: "Welcome {{name2}}! I'm the community manager. Feel free to introduce yourself!",
-          actions: ['GREET_NEW_PERSON'],
+          actions: ["GREET_NEW_PERSON"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Can someone greet {{name2}}?',
-          source: 'discord',
+          text: "Can someone greet {{name2}}?",
+          source: "discord",
         },
       },
       {
-        name: '{{name3}}',
+        name: "{{name3}}",
         content: {
-          text: 'Hi {{name2}}! Welcome to our community!',
-          actions: ['GREET_NEW_PERSON'],
+          text: "Hi {{name2}}! Welcome to our community!",
+          actions: ["GREET_NEW_PERSON"],
         },
       },
     ],

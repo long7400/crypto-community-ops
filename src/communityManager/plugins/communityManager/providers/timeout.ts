@@ -1,5 +1,5 @@
-import { addHeader } from '@elizaos/core';
-import type { Provider } from '@elizaos/core';
+import { addHeader } from "@elizaos/core";
+import type { Provider } from "@elizaos/core";
 
 /**
  * Provider that produces a prompt to help the agent decide if someone should be timed out.
@@ -7,8 +7,9 @@ import type { Provider } from '@elizaos/core';
  * This provider simply provides a high-level prompt instructing the agent to take the TIMEOUT_USER action if needed.
  */
 export const timeoutUserProvider: Provider = {
-  name: 'TIMEOUT_USER_CONTEXT',
-  description: 'Prompt to decide if someone in the conversation should be timed out.',
+  name: "TIMEOUT_USER_CONTEXT",
+  description:
+    "Prompt to decide if someone in the conversation should be timed out.",
   get: async () => {
     const instruction = `Review the conversation carefully.
 
@@ -28,9 +29,9 @@ only return the action if:
     return {
       data: {},
       values: {
-        moderation: addHeader('# Timeout Decision Instructions', instruction),
+        moderation: addHeader("# Timeout Decision Instructions", instruction),
       },
-      text: addHeader('# Timeout Decision Instructions', instruction),
+      text: addHeader("# Timeout Decision Instructions", instruction),
     };
   },
 };

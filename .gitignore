@@ -159,4 +159,7 @@ elizadb
 dist/
 .eliza
 /.spectra.yaml
+.spectra/
+openspec/.vector-search.db*
 /.elizadb-test/
+/.agents/

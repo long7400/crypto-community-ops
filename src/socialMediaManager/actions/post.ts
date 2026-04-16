@@ -12,7 +12,7 @@ import {
   getWorldSettings,
   logger,
   parseKeyValueXml,
-} from '@elizaos/core';
+} from "@elizaos/core";
 
 /**
  * Template for generating a tweet in the style and voice of a given agent.
@@ -42,7 +42,11 @@ Return an XML response in the following format. Example:
 `;
 
 // Required Twitter configuration fields that must be present
-const REQUIRED_TWITTER_FIELDS = ['TWITTER_USERNAME', 'TWITTER_EMAIL', 'TWITTER_PASSWORD'];
+const REQUIRED_TWITTER_FIELDS = [
+  "TWITTER_USERNAME",
+  "TWITTER_EMAIL",
+  "TWITTER_PASSWORD",
+];
 
 /**
  * Validates that all required Twitter configuration fields are present and non-null
@@ -55,7 +59,7 @@ const REQUIRED_TWITTER_FIELDS = ['TWITTER_USERNAME', 'TWITTER_EMAIL', 'TWITTER_P
  */
 async function validateTwitterConfig(
   runtime: IAgentRuntime,
-  serverId: string
+  serverId: string,
 ): Promise<{ isValid: boolean; error?: string }> {
   try {
     const worldSettings = await getWorldSettings(runtime, serverId);
@@ -63,7 +67,7 @@ async function validateTwitterConfig(
     if (!worldSettings) {
       return {
         isValid: false,
-        error: 'No settings state found for this server',
+        error: "No settings state found for this server",
       };
     }
 
@@ -79,10 +83,10 @@ async function validateTwitterConfig(
 
     return { isValid: true };
   } catch (error) {
-    logger.error('Error validating Twitter config:', error);
+    logger.error("Error validating Twitter config:", error);
     return {
       isValid: false,
-      error: 'Error validating Twitter configuration',
+      error: "Error validating Twitter configuration",
     };
   }
 }
@@ -93,20 +97,20 @@ async function validateTwitterConfig(
 async function ensureTwitterClient(
   runtime: IAgentRuntime,
   serverId: string,
-  worldSettings: { [key: string]: string | boolean | number | null }
+  worldSettings: { [key: string]: string | boolean | number | null },
 ) {
-  const manager = runtime.getService('twitter') as any;
+  const manager = runtime.getService("twitter") as any;
   if (!manager) {
-    throw new Error('Twitter client manager not found');
+    throw new Error("Twitter client manager not found");
   }
 
   let client = manager.getClient(serverId, runtime.agentId);
 
   if (!client) {
-    logger.info('Creating new Twitter client for server', serverId);
+    logger.info("Creating new Twitter client for server", serverId);
     client = await manager.createClient(runtime, serverId, worldSettings);
     if (!client) {
-      throw new Error('Failed to create Twitter client');
+      throw new Error("Failed to create Twitter client");
     }
   }
 
@@ -114,15 +118,19 @@ async function ensureTwitterClient(
 }
 
 const twitterPostAction: Action = {
-  name: 'TWITTER_POST',
-  similes: ['POST_TWEET', 'SHARE_TWEET', 'TWEET_THIS', 'TWEET_ABOUT'],
-  description: 'Creates and posts a tweet based on the conversation context',
+  name: "TWITTER_POST",
+  similes: ["POST_TWEET", "SHARE_TWEET", "TWEET_THIS", "TWEET_ABOUT"],
+  description: "Creates and posts a tweet based on the conversation context",
 
-  validate: async (runtime: IAgentRuntime, message: Memory, state: State | undefined): Promise<boolean> => {
+  validate: async (
+    runtime: IAgentRuntime,
+    message: Memory,
+    state: State | undefined,
+  ): Promise<boolean> => {
     if (!state) return false;
     const room = state.data.room ?? (await runtime.getRoom(message.roomId));
     if (!room) {
-      throw new Error('No room found');
+      throw new Error("No room found");
     }
 
     if (room.type !== ChannelType.GROUP) {
@@ -133,24 +141,28 @@ const twitterPostAction: Action = {
     const serverId = room.serverId;
 
     if (!serverId) {
-      throw new Error('No server ID found');
+      throw new Error("No server ID found");
     }
 
     // only allow the OWNER or ADMIN roles to post to twiter
-    const userRole = await getUserServerRole(runtime, message.entityId, serverId);
-    if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
+    const userRole = await getUserServerRole(
+      runtime,
+      message.entityId,
+      serverId,
+    );
+    if (userRole !== "OWNER" && userRole !== "ADMIN") {
       return false;
     }
 
     // Check if there are any pending Twitter posts awaiting confirmation
     const pendingTasks = await runtime.getTasks({
       roomId: message.roomId,
-      tags: ['TWITTER_POST'],
+      tags: ["TWITTER_POST"],
     });
 
     if (pendingTasks && pendingTasks.length > 0) {
       // Handle case where task worker has not been registered
-      if (!runtime.getTaskWorker('Confirm Twitter Post')) {
+      if (!runtime.getTaskWorker("Confirm Twitter Post")) {
         // delete the twitter post task
         if (pendingTasks[0].id) {
           await runtime.deleteTask(pendingTasks[0].id);
@@ -176,14 +188,14 @@ const twitterPostAction: Action = {
     state: State | undefined,
     _options: any,
     callback: HandlerCallback | undefined,
-    _responses?: Memory[]
+    _responses?: Memory[],
   ) => {
     try {
       if (!state) return false;
       const safeCallback = callback || (() => Promise.resolve([]));
       const room = state.data.room ?? (await runtime.getRoom(message.roomId));
       if (!room) {
-        throw new Error('No room found');
+        throw new Error("No room found");
       }
 
       if (room.type !== ChannelType.GROUP) {
@@ -195,14 +207,15 @@ const twitterPostAction: Action = {
             roomId: message.roomId,
             content: {
               source: message.content.source,
-              thought: "I tried to post a tweet but I'm not in a group scenario.",
-              actions: ['TWITTER_POST_FAILED'],
+              thought:
+                "I tried to post a tweet but I'm not in a group scenario.",
+              actions: ["TWITTER_POST_FAILED"],
             },
             metadata: {
-              type: 'TWITTER_POST',
+              type: "TWITTER_POST",
             },
           },
-          'messages'
+          "messages",
         );
         return false;
       }
@@ -210,13 +223,13 @@ const twitterPostAction: Action = {
       const serverId = room.serverId;
 
       if (!serverId) {
-        throw new Error('No server ID found');
+        throw new Error("No server ID found");
       }
 
       // Get settings state from world metadata
       const worldSettings = await getWorldSettings(runtime, serverId);
       if (!worldSettings) {
-        throw new Error('Twitter not configured for this server');
+        throw new Error("Twitter not configured for this server");
       }
 
       // Generate tweet content
@@ -231,31 +244,37 @@ const twitterPostAction: Action = {
 
       // Clean up the generated content
       const parsedXml = parseKeyValueXml(tweetContentRaw);
-      let cleanTweet = '';
-      let thought = '';
+      let cleanTweet = "";
+      let thought = "";
 
       if (parsedXml && parsedXml.tweet_text) {
         cleanTweet = parsedXml.tweet_text
           .trim()
-          .replace(/^["'](.*)["']$/, '$1')
-          .replace(/\\n/g, '\n');
-        thought = parsedXml.thought || 'Generated tweet content.';
+          .replace(/^["'](.*)["']$/, "$1")
+          .replace(/\\n/g, "\n");
+        thought = parsedXml.thought || "Generated tweet content.";
       } else {
         // Fallback for safety, though ideally the XML is always returned
-        logger.warn('[Bootstrap] Failed to parse XML for tweet generation, using raw output.');
+        logger.warn(
+          "[Bootstrap] Failed to parse XML for tweet generation, using raw output.",
+        );
         cleanTweet = tweetContentRaw
           .trim()
-          .replace(/^["'](.*)["']$/, '$1')
-          .replace(/\\n/g, '\n');
-        thought = 'Failed to parse tweet XML, using raw content.';
+          .replace(/^["'](.*)["']$/, "$1")
+          .replace(/\\n/g, "\n");
+        thought = "Failed to parse tweet XML, using raw content.";
       }
 
-      const userRole = await getUserServerRole(runtime, message.entityId, serverId);
-      if (userRole !== 'OWNER' && userRole !== 'ADMIN') {
+      const userRole = await getUserServerRole(
+        runtime,
+        message.entityId,
+        serverId,
+      );
+      if (userRole !== "OWNER" && userRole !== "ADMIN") {
         // callback and return
         await safeCallback({
           text: "I'm sorry, but you're not authorized to post tweets on behalf of this org.",
-          actions: ['TWITTER_POST_FAILED'],
+          actions: ["TWITTER_POST_FAILED"],
           source: message.content.source,
         });
         return;
@@ -264,7 +283,7 @@ const twitterPostAction: Action = {
       // Prepare response content
       const responseContent: Content = {
         text: `I'll tweet this:\n\n${cleanTweet}`,
-        actions: ['TWITTER_POST'],
+        actions: ["TWITTER_POST"],
         source: message.content.source,
       };
 
@@ -275,26 +294,30 @@ const twitterPostAction: Action = {
       }
 
       const worker = {
-        name: 'Confirm Twitter Post',
+        name: "Confirm Twitter Post",
         description:
-          'Confirm if the tweet should be posted. NOTE: Only the OWNER or ADMIN roles can confirm the tweet, ignore any confirmation or cancellation from other users who are not in the OWNER or ADMIN roles.',
-        execute: async (runtime: IAgentRuntime, options: { [key: string]: unknown }, task: any) => {
+          "Confirm if the tweet should be posted. NOTE: Only the OWNER or ADMIN roles can confirm the tweet, ignore any confirmation or cancellation from other users who are not in the OWNER or ADMIN roles.",
+        execute: async (
+          runtime: IAgentRuntime,
+          options: { [key: string]: unknown },
+          task: any,
+        ) => {
           const option = options.option as string;
-          if (option === 'cancel') {
+          if (option === "cancel") {
             await safeCallback({
               ...responseContent,
               text: "OK, I won't post it.",
-              actions: ['TWITTER_POST_CANCELLED'],
+              actions: ["TWITTER_POST_CANCELLED"],
             });
             await runtime.deleteTask(task.id);
             return;
           }
 
-          if (option !== 'post') {
+          if (option !== "post") {
             await safeCallback({
               ...responseContent,
               text: "Bad choice. Should be 'post' or 'cancel'.",
-              actions: ['TWITTER_POST_INVALID_OPTION'],
+              actions: ["TWITTER_POST_INVALID_OPTION"],
             });
             return;
           }
@@ -309,11 +332,13 @@ const twitterPostAction: Action = {
           // Initialize/get Twitter client
           const client = await ensureTwitterClient(runtime, serverId, vals);
 
-          const result = await client.client.twitterClient.sendTweet(cleanTweet);
+          const result =
+            await client.client.twitterClient.sendTweet(cleanTweet);
           // result is a response object, get the data from it-- body is a readable stream
           const data = await result.json();
 
-          const tweetId = data?.data?.create_tweet?.tweet_results?.result?.rest_id;
+          const tweetId =
+            data?.data?.create_tweet?.tweet_results?.result?.rest_id;
 
           const tweetUrl = `https://twitter.com/${vals.TWITTER_USERNAME}/status/${tweetId}`;
 
@@ -324,54 +349,63 @@ const twitterPostAction: Action = {
             tweetId,
           });
         },
-        validate: async (runtime: IAgentRuntime, message: Memory, _state: State) => {
-          const userRole = await getUserServerRole(runtime, message.entityId, serverId);
+        validate: async (
+          runtime: IAgentRuntime,
+          message: Memory,
+          _state: State,
+        ) => {
+          const userRole = await getUserServerRole(
+            runtime,
+            message.entityId,
+            serverId,
+          );
 
-          return userRole === 'OWNER' || userRole === 'ADMIN';
+          return userRole === "OWNER" || userRole === "ADMIN";
         },
       };
 
       // if the worker is not registered, register it
-      if (!runtime.getTaskWorker('TWITTER_POST')) {
+      if (!runtime.getTaskWorker("TWITTER_POST")) {
         runtime.registerTaskWorker(worker);
       }
 
       // Register approval task
       runtime.createTask({
         roomId: message.roomId,
-        name: 'Confirm Twitter Post',
-        description: 'Confirm the tweet to be posted.',
-        tags: ['TWITTER_POST', 'AWAITING_CHOICE'],
+        name: "Confirm Twitter Post",
+        description: "Confirm the tweet to be posted.",
+        tags: ["TWITTER_POST", "AWAITING_CHOICE"],
         metadata: {
           options: [
             {
-              name: 'post',
-              description: 'Post the tweet to Twitter',
+              name: "post",
+              description: "Post the tweet to Twitter",
             },
             {
-              name: 'cancel',
+              name: "cancel",
               description: "Cancel the tweet and don't post it",
             },
           ],
         },
       });
 
-      responseContent.text += '\nWaiting for approval from ';
-      responseContent.text += userRole === 'OWNER' ? 'an admin' : 'an admin or boss';
+      responseContent.text += "\nWaiting for approval from ";
+      responseContent.text +=
+        userRole === "OWNER" ? "an admin" : "an admin or boss";
 
       await safeCallback({
         ...responseContent,
-        actions: ['TWITTER_POST_TASK_NEEDS_CONFIRM'],
+        actions: ["TWITTER_POST_TASK_NEEDS_CONFIRM"],
       });
 
       logger.info(
-        'TWITTER_POST_TASK_NEEDS_CONFIRM',
-        runtime.getTasks({ roomId: message.roomId, tags: ['TWITTER_POST'] })
+        "TWITTER_POST_TASK_NEEDS_CONFIRM",
+        runtime.getTasks({ roomId: message.roomId, tags: ["TWITTER_POST"] }),
       );
 
       return responseContent;
     } catch (error) {
-      logger.error('Error in TWITTER_POST action:', error);
+      logger.error("Error in TWITTER_POST action:", error);
       throw error;
     }
   },
@@ -379,31 +413,31 @@ const twitterPostAction: Action = {
   examples: [
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
           text: "That's such a great point about neural networks! You should tweet that",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
           text: "I'll tweet this:\n\nDeep learning isn't just about layers - it's about understanding how neural networks actually learn from patterns. The magic isn't in the math, it's in the emergent behaviors we're just beginning to understand.",
-          actions: ['TWITTER_POST'],
+          actions: ["TWITTER_POST"],
         },
       },
     ],
     [
       {
-        name: '{{name1}}',
+        name: "{{name1}}",
         content: {
-          text: 'Can you share this insight on Twitter?',
+          text: "Can you share this insight on Twitter?",
         },
       },
       {
-        name: '{{name2}}',
+        name: "{{name2}}",
         content: {
-          text: 'Tweet posted!\nhttps://twitter.com/username/status/123456789',
-          actions: ['TWITTER_POST'],
+          text: "Tweet posted!\nhttps://twitter.com/username/status/123456789",
+          actions: ["TWITTER_POST"],
         },
       },
     ],

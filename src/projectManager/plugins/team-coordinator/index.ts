@@ -1,25 +1,25 @@
 // biome-ignore lint/style/useImportType: <explanation>
-import type { IAgentRuntime, Plugin } from '@elizaos/core';
+import type { IAgentRuntime, Plugin } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import { recordCheckInAction } from "./actions/checkInCreate";
+import { listCheckInSchedules } from "./actions/checkInList";
+import { generateReport } from "./actions/reportGenerate";
+import { addTeamMemberAction } from "./actions/teamMemberAdd";
+import { listTeamMembersAction } from "./actions/teamMembersList";
+import { teamMemberUpdatesAction } from "./actions/teamMemberUpdate";
+import { updatesFormatAction } from "./actions/updateFormat";
 // import { checkInFormatAction } from './actions/checkInFormatAction';
-import { CheckInService } from './services/checkInService';
-import { logger } from '@elizaos/core';
-import { listCheckInSchedules } from './actions/checkInList';
-import { TeamUpdateTrackerService } from './services/updateTracker';
-import { recordCheckInAction } from './actions/checkInCreate';
-import { generateReport } from './actions/reportGenerate';
-import { teamMemberUpdatesAction } from './actions/teamMemberUpdate';
-import { addTeamMemberAction } from './actions/teamMemberAdd';
-import { listTeamMembersAction } from './actions/teamMembersList';
-import { updatesFormatAction } from './actions/updateFormat';
-import { registerTasks } from './tasks';
+import { CheckInService } from "./services/CheckInService";
+import { TeamUpdateTrackerService } from "./services/updateTracker";
+import { registerTasks } from "./tasks";
 
 /**
  * Plugin for team coordination functionality
  * Handles team member management, availability tracking, and check-ins
  */
 export const teamCoordinatorPlugin: Plugin = {
-  name: 'team-coordinator',
-  description: 'Team Coordinator plugin for managing team activities',
+  name: "team-coordinator",
+  description: "Team Coordinator plugin for managing team activities",
   providers: [],
   actions: [
     // checkInFormatAction,
@@ -33,10 +33,10 @@ export const teamCoordinatorPlugin: Plugin = {
   ],
   init: async (config: Record<string, string>, runtime: IAgentRuntime) => {
     try {
-      logger.info('Initializing Team Coordinator plugin...');
+      logger.info("Initializing Team Coordinator plugin...");
 
       // Register the services
-      logger.info('Registering TeamUpdateTrackerService...');
+      logger.info("Registering TeamUpdateTrackerService...");
       await runtime.registerService(TeamUpdateTrackerService);
 
       // Register and start the CheckIn service
@@ -44,40 +44,49 @@ export const teamCoordinatorPlugin: Plugin = {
       // await runtime.registerService(CheckInService);
 
       // Delay task registration to ensure adapter is ready
-      logger.info('Scheduling team coordinator tasks registration...');
-      
+      logger.info("Scheduling team coordinator tasks registration...");
+
       // Use a retry mechanism to register tasks when adapter is ready
       const registerTasksWithRetry = async (retries = 10, delay = 1000) => {
         for (let i = 0; i < retries; i++) {
           try {
             // Check if getTasks method is available
-            if (runtime.getTasks && typeof runtime.getTasks === 'function') {
-              logger.info('Runtime is ready, registering team coordinator tasks...');
+            if (runtime.getTasks && typeof runtime.getTasks === "function") {
+              logger.info(
+                "Runtime is ready, registering team coordinator tasks...",
+              );
               await registerTasks(runtime);
-              logger.info('Team coordinator tasks registered successfully');
+              logger.info("Team coordinator tasks registered successfully");
               return;
             } else {
-              logger.info(`Runtime not ready yet, retrying in ${delay}ms... (attempt ${i + 1}/${retries})`);
+              logger.info(
+                `Runtime not ready yet, retrying in ${delay}ms... (attempt ${i + 1}/${retries})`,
+              );
             }
           } catch (error) {
-            logger.warn(`Failed to register tasks (attempt ${i + 1}/${retries}):`, error);
+            logger.warn(
+              `Failed to register tasks (attempt ${i + 1}/${retries}):`,
+              error,
+            );
           }
-          
+
           // Wait before next retry
-          await new Promise(resolve => setTimeout(resolve, delay));
+          await new Promise((resolve) => setTimeout(resolve, delay));
         }
-        
-        logger.error('Failed to register team coordinator tasks after all retries');
+
+        logger.error(
+          "Failed to register team coordinator tasks after all retries",
+        );
       };
 
       // Start the retry process asynchronously
-      registerTasksWithRetry().catch(error => {
-        logger.error('Error in registerTasksWithRetry:', error);
+      registerTasksWithRetry().catch((error) => {
+        logger.error("Error in registerTasksWithRetry:", error);
       });
 
-      logger.info('Team Coordinator plugin initialized successfully');
+      logger.info("Team Coordinator plugin initialized successfully");
     } catch (error) {
-      logger.error('Failed to initialize Team Coordinator plugin:', error);
+      logger.error("Failed to initialize Team Coordinator plugin:", error);
       throw error;
     }
   },

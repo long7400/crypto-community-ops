@@ -1,16 +1,16 @@
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { logger } from '@elizaos/core';
-import { LoadTestMetrics, ScaleConfig } from './types';
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { logger } from "@elizaos/core";
+import { LoadTestMetrics, ScaleConfig } from "./types";
 
 /**
  * Threshold configurations for breaking point detection
  */
 export enum ThresholdLevel {
-  LOW = 'LOW',
-  MEDIUM = 'MEDIUM',
-  HIGH = 'HIGH',
+  LOW = "LOW",
+  MEDIUM = "MEDIUM",
+  HIGH = "HIGH",
 }
 
 export interface ThresholdConfig {
@@ -51,7 +51,7 @@ export const THRESHOLD_CONFIGS: Record<ThresholdLevel, ThresholdConfig> = {
 export function ensureLogsDirectory(): string {
   const __filename = fileURLToPath(import.meta.url);
   const __dirname = path.dirname(__filename);
-  const logsDir = path.join(__dirname, 'logs');
+  const logsDir = path.join(__dirname, "logs");
 
   if (!fs.existsSync(logsDir)) {
     fs.mkdirSync(logsDir, { recursive: true });
@@ -65,7 +65,7 @@ export function ensureLogsDirectory(): string {
  * Create a timestamp string for file naming
  */
 export function generateTimestamp(): string {
-  return new Date().toISOString().replace(/:/g, '-');
+  return new Date().toISOString().replace(/:/g, "-");
 }
 
 /**
@@ -97,11 +97,11 @@ export function createScalabilityAnalysisHeader(): string {
  */
 export function createLoadTestSummaryHeader(): string {
   return (
-    'Scale Testing Summary - Finding Breaking Points\n' +
-    '===========================================\n' +
+    "Scale Testing Summary - Finding Breaking Points\n" +
+    "===========================================\n" +
     `Test Started: ${new Date().toISOString()}\n\n` +
-    'Configuration | Agents | Messages | Success Rate | Avg Response | Memory | Throughput | Errors\n' +
-    '-------------|--------|----------|--------------|--------------|--------|------------|-------\n'
+    "Configuration | Agents | Messages | Success Rate | Avg Response | Memory | Throughput | Errors\n" +
+    "-------------|--------|----------|--------------|--------------|--------|------------|-------\n"
   );
 }
 
@@ -111,12 +111,12 @@ export function createLoadTestSummaryHeader(): string {
 export function createDetailedTestLogHeader(config: ScaleConfig): string {
   return (
     `Load Test: ${config.description}\n` +
-    `================${'='.repeat(config.description.length)}\n` +
+    `================${"=".repeat(config.description.length)}\n` +
     `Agents: ${config.agents}\n` +
     `Messages: ${config.messageCount}\n` +
     `Started: ${new Date().toISOString()}\n\n` +
-    'DETAILED TEST LOG:\n' +
-    '=================\n\n'
+    "DETAILED TEST LOG:\n" +
+    "=================\n\n"
   );
 }
 
@@ -125,7 +125,7 @@ export function createDetailedTestLogHeader(config: ScaleConfig): string {
  */
 export function formatBreakingPointNotification(
   metrics: LoadTestMetrics,
-  thresholdLevel: ThresholdLevel
+  thresholdLevel: ThresholdLevel,
 ): string {
   const thresholds = THRESHOLD_CONFIGS[thresholdLevel];
   return (
@@ -146,7 +146,7 @@ export function formatScalabilityConclusions(conclusions: string): string {
     `\n\nSCALABILITY CONCLUSIONS\n` +
     `======================\n\n` +
     conclusions +
-    '\n\n' +
+    "\n\n" +
     `For detailed metrics on each test configuration, see the individual test logs.\n`
   );
 }
@@ -179,8 +179,8 @@ export function formatErrorMessage(error: any): string {
   return (
     `\n\nERROR DURING TESTING:\n` +
     `===================\n` +
-    `${error.stdout || ''}\n` +
-    `${error.stderr || ''}\n` +
+    `${error.stdout || ""}\n` +
+    `${error.stderr || ""}\n` +
     `${error.message}\n\n` +
     `Even though an error occurred, this might represent the actual breaking point.\n` +
     `Examine the logs to determine the last successful configuration.\n\n` +
@@ -191,7 +191,10 @@ export function formatErrorMessage(error: any): string {
 /**
  * Check if a breaking point is reached based on metrics and threshold level
  */
-export function isBreakingPoint(metrics: LoadTestMetrics, thresholdLevel: ThresholdLevel): boolean {
+export function isBreakingPoint(
+  metrics: LoadTestMetrics,
+  thresholdLevel: ThresholdLevel,
+): boolean {
   const thresholds = THRESHOLD_CONFIGS[thresholdLevel];
 
   const errorRate = (metrics.errorCount / metrics.messagesSent) * 100;
@@ -207,39 +210,42 @@ export function isBreakingPoint(metrics: LoadTestMetrics, thresholdLevel: Thresh
 /**
  * Format detailed metrics for a log file
  */
-export function formatDetailedMetrics(config: ScaleConfig, metrics: LoadTestMetrics): string {
-  let output = '\n========== DETAILED METRICS ==========\n';
+export function formatDetailedMetrics(
+  config: ScaleConfig,
+  metrics: LoadTestMetrics,
+): string {
+  let output = "\n========== DETAILED METRICS ==========\n";
   output += `Configuration: ${config.description}\n`;
   output += `Agents: ${config.agents}\n`;
   output += `Messages: ${config.messageCount}\n`;
   output += `Test Duration: ${(metrics.totalTime / 1000).toFixed(2)} seconds\n\n`;
 
-  output += 'PERFORMANCE METRICS:\n';
+  output += "PERFORMANCE METRICS:\n";
   output += `- Messages Sent: ${metrics.messagesSent}\n`;
   output += `- Messages Processed: ${metrics.messagesProcessed}\n`;
   output += `- Success Rate: ${metrics.successRate.toFixed(2)}%\n`;
   output += `- Throughput: ${metrics.throughput.toFixed(2)} messages/second\n\n`;
 
-  output += 'RESPONSE TIME METRICS:\n';
+  output += "RESPONSE TIME METRICS:\n";
   output += `- Average Response Time: ${metrics.avgResponseTime.toFixed(2)}ms\n`;
   output += `- Minimum Response Time: ${metrics.minResponseTime}ms\n`;
   output += `- Maximum Response Time: ${metrics.maxResponseTime}ms\n\n`;
 
-  output += 'ERROR METRICS:\n';
+  output += "ERROR METRICS:\n";
   output += `- Total Errors: ${metrics.errorCount}\n`;
   output += `- Timeout Count: ${metrics.timeoutCount}\n`;
 
   if (Object.keys(metrics.errorTypes).length > 0) {
-    output += '- Error Types:\n';
+    output += "- Error Types:\n";
     for (const [type, count] of Object.entries(metrics.errorTypes)) {
       output += `  * ${type}: ${count}\n`;
     }
   }
 
-  output += '\nSYSTEM RESOURCE METRICS:\n';
+  output += "\nSYSTEM RESOURCE METRICS:\n";
   output += `- Memory Usage: ${metrics.memoryUsageStart.toFixed(2)}MB → ${metrics.memoryUsageEnd.toFixed(2)}MB\n`;
   output += `- Peak Memory Usage: ${metrics.peakMemoryUsage.toFixed(2)}MB\n`;
-  output += '===================================\n';
+  output += "===================================\n";
 
   return output;
 }
@@ -247,7 +253,10 @@ export function formatDetailedMetrics(config: ScaleConfig, metrics: LoadTestMetr
 /**
  * Format a summary log line
  */
-export function formatSummaryLogLine(config: ScaleConfig, metrics: LoadTestMetrics): string {
+export function formatSummaryLogLine(
+  config: ScaleConfig,
+  metrics: LoadTestMetrics,
+): string {
   return (
     `${config.description.padEnd(13)} | ${String(config.agents).padEnd(6)} | ` +
     `${String(config.messageCount).padEnd(8)} | ` +

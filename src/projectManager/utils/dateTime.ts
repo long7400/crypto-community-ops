@@ -12,7 +12,7 @@
 export function isAvailableNow(
   workDays: string[],
   workHours: { start: string; end: string },
-  timeZone: string
+  timeZone: string,
 ): boolean {
   try {
     const now = new Date();
@@ -20,9 +20,11 @@ export function isAvailableNow(
     // Get the day name in the team member's timezone
     const options: Intl.DateTimeFormatOptions = {
       timeZone,
-      weekday: 'long',
+      weekday: "long",
     };
-    const dayName = new Intl.DateTimeFormat('en-US', options).format(now).split(',')[0];
+    const dayName = new Intl.DateTimeFormat("en-US", options)
+      .format(now)
+      .split(",")[0];
 
     // Check if today is a work day
     if (!workDays.includes(dayName)) {
@@ -32,24 +34,29 @@ export function isAvailableNow(
     // Get current time in team member's timezone
     const timeOptions: Intl.DateTimeFormatOptions = {
       timeZone,
-      hour: 'numeric',
-      minute: 'numeric',
+      hour: "numeric",
+      minute: "numeric",
       hour12: false,
     };
-    const currentTime = new Intl.DateTimeFormat('en-US', timeOptions).format(now);
+    const currentTime = new Intl.DateTimeFormat("en-US", timeOptions).format(
+      now,
+    );
 
     // Compare with work hours
-    const [currentHour, currentMinute] = currentTime.split(':').map(Number);
-    const [startHour, startMinute] = workHours.start.split(':').map(Number);
-    const [endHour, endMinute] = workHours.end.split(':').map(Number);
+    const [currentHour, currentMinute] = currentTime.split(":").map(Number);
+    const [startHour, startMinute] = workHours.start.split(":").map(Number);
+    const [endHour, endMinute] = workHours.end.split(":").map(Number);
 
     const currentTimeMinutes = currentHour * 60 + currentMinute;
     const startTimeMinutes = startHour * 60 + startMinute;
     const endTimeMinutes = endHour * 60 + endMinute;
 
-    return currentTimeMinutes >= startTimeMinutes && currentTimeMinutes <= endTimeMinutes;
+    return (
+      currentTimeMinutes >= startTimeMinutes &&
+      currentTimeMinutes <= endTimeMinutes
+    );
   } catch (error) {
-    console.error('Error checking availability:', error);
+    console.error("Error checking availability:", error);
     return false;
   }
 }
@@ -66,13 +73,13 @@ export function calculateNextCheckIn(
   workDays: string[],
   workHours: { start: string; end: string },
   timeZone: string,
-  frequencyHours: number = 24
+  frequencyHours: number = 24,
 ): Date {
   const now = new Date();
 
   // Function to get date with specific time in member's timezone
   const getDateWithTime = (date: Date, timeStr: string): Date => {
-    const [hours, minutes] = timeStr.split(':').map(Number);
+    const [hours, minutes] = timeStr.split(":").map(Number);
     const result = new Date(date);
     result.setHours(hours, minutes, 0, 0);
     return result;
@@ -87,9 +94,9 @@ export function calculateNextCheckIn(
     // Format the day name in the team member's timezone
     const options: Intl.DateTimeFormatOptions = {
       timeZone,
-      weekday: 'long',
+      weekday: "long",
     };
-    const dayName = new Intl.DateTimeFormat('en-US', options).format(nextDate);
+    const dayName = new Intl.DateTimeFormat("en-US", options).format(nextDate);
 
     // Check if this is a workday
     if (workDays.includes(dayName)) {
@@ -106,7 +113,9 @@ export function calculateNextCheckIn(
 
       // If we're within work hours, schedule after frequency hours (but within work hours)
       if (nextDate <= endTime) {
-        const nextCheckIn = new Date(nextDate.getTime() + frequencyHours * 60 * 60 * 1000);
+        const nextCheckIn = new Date(
+          nextDate.getTime() + frequencyHours * 60 * 60 * 1000,
+        );
 
         // If next check-in falls within work hours, use it
         if (nextCheckIn <= endTime) {
@@ -138,16 +147,16 @@ export function calculateNextCheckIn(
  */
 export function formatDate(date: Date, timeZone?: string): string {
   const options: Intl.DateTimeFormatOptions = {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
     timeZone,
   };
 
-  return new Intl.DateTimeFormat('en-US', options).format(date);
+  return new Intl.DateTimeFormat("en-US", options).format(date);
 }
 
 /**
@@ -158,15 +167,15 @@ export function formatDate(date: Date, timeZone?: string): string {
  */
 export function getProjectStatus(
   completionPercentage: number,
-  elapsedTimePercentage: number
-): 'ON_TRACK' | 'AT_RISK' | 'DELAYED' {
+  elapsedTimePercentage: number,
+): "ON_TRACK" | "AT_RISK" | "DELAYED" {
   const difference = completionPercentage - elapsedTimePercentage;
 
   if (difference >= -10) {
-    return 'ON_TRACK'; // Within 10% of expected progress
+    return "ON_TRACK"; // Within 10% of expected progress
   } else if (difference >= -20) {
-    return 'AT_RISK'; // 10-20% behind schedule
+    return "AT_RISK"; // 10-20% behind schedule
   } else {
-    return 'DELAYED'; // More than 20% behind schedule
+    return "DELAYED"; // More than 20% behind schedule
   }
 }
