@@ -1,4 +1,4 @@
-import { createUniqueUuid, type IAgentRuntime } from "@elizaos/core";
+import { createUniqueUuid, type IAgentRuntime, logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { bootstrapTeamCoordinator, registerTasksWithRetry } from "./bootstrap";
 import { stringifyForLog, toErrorMessage } from "./logging";
@@ -53,6 +53,73 @@ describe("team coordinator bootstrap", () => {
     await promise;
 
     expect(register).toHaveBeenCalledTimes(1);
+  });
+
+  it("logs targeted readiness diagnostics when runtime.getTasks is unavailable", async () => {
+    const debugSpy = vi
+      .spyOn(logger, "debug")
+      .mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined);
+    const runtime = {
+      registerService: vi.fn().mockResolvedValue(undefined),
+      getTasks: undefined,
+    } as unknown as IAgentRuntime;
+    const register = vi.fn().mockResolvedValue(undefined);
+
+    const promise = registerTasksWithRetry(runtime, register, {
+      retries: 2,
+      delayMs: 100,
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    await vi.advanceTimersByTimeAsync(100);
+    await promise;
+
+    expect(register).not.toHaveBeenCalled();
+    expect(debugSpy).toHaveBeenCalledWith(
+      "runtime.getTasks not yet available (attempt 1/2), will retry",
+    );
+    expect(debugSpy).toHaveBeenCalledWith(
+      "runtime.getTasks not yet available (attempt 2/2), will retry",
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      "runtime.getTasks never became available; team coordinator tasks were not registered",
+    );
+  });
+
+  it("keeps terminal registration failure logging when task registration throws after readiness", async () => {
+    const warnSpy = vi
+      .spyOn(logger, "warn")
+      .mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined);
+    const runtime = {
+      registerService: vi.fn().mockResolvedValue(undefined),
+      getTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as IAgentRuntime;
+    const register = vi.fn().mockRejectedValue(new Error("boom"));
+
+    const promise = registerTasksWithRetry(runtime, register, {
+      retries: 2,
+      delayMs: 100,
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    await promise;
+
+    expect(register).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to register team coordinator tasks (attempt 1/2): boom",
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to register team coordinator tasks (attempt 2/2): boom",
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      "Failed to register team coordinator tasks after all retries",
+    );
   });
 
   it("starts deferred task registration from bootstrap without re-registering services", async () => {

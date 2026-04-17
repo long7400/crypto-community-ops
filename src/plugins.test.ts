@@ -6,6 +6,7 @@ import {
   type Character,
   type IAgentRuntime,
   logger,
+  type Plugin,
   stringToUuid,
   type TestSuite,
 } from "@elizaos/core";
@@ -68,6 +69,24 @@ function createTempDbDir(characterName: string): string {
   return dataDir;
 }
 
+function getPluginMigrationTarget(plugin: Plugin | undefined): {
+  name: string;
+  schema: Record<string, unknown>;
+} {
+  const schema = plugin?.schema;
+
+  if (!schema) {
+    throw new Error(
+      "@elizaos/plugin-sql default export does not expose schema; cannot run test migrations",
+    );
+  }
+
+  return {
+    name: plugin.name,
+    schema,
+  };
+}
+
 // Initialize runtime for a character
 /**
  * Asynchronously initializes the runtime for a given character with the provided configuration.
@@ -128,19 +147,19 @@ async function initializeRuntime(character: Character): Promise<IAgentRuntime> {
 
     runtime.registerDatabaseAdapter(adapter);
 
-    await adapter.runPluginMigrations?.(
-      [
-        {
-          name: "@elizaos/plugin-sql",
-          schema: drizzleAdapter.plugin.schema,
-        },
-      ],
-      {
-        verbose: true,
-        force: false,
-        dryRun: false,
-      },
-    );
+    if (typeof adapter.runPluginMigrations !== "function") {
+      throw new Error(
+        "Database adapter does not support plugin migrations; cannot initialize test database",
+      );
+    }
+
+    const migrationTarget = getPluginMigrationTarget(drizzleAdapter.default);
+
+    await adapter.runPluginMigrations([migrationTarget], {
+      verbose: true,
+      force: false,
+      dryRun: false,
+    });
 
     await runtime.initialize();
 

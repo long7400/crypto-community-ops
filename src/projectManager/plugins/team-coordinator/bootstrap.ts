@@ -11,13 +11,19 @@ export async function registerTasksWithRetry(
 ): Promise<void> {
   const retries = options.retries ?? 10;
   const delayMs = options.delayMs ?? 1000;
+  let tasksApiReady = false;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     try {
-      if (runtime.getTasks && typeof runtime.getTasks === "function") {
+      if (typeof runtime.getTasks === "function") {
+        tasksApiReady = true;
         await registerTasks(runtime);
         return;
       }
+
+      logger.debug(
+        `runtime.getTasks not yet available (attempt ${attempt}/${retries}), will retry`,
+      );
     } catch (error) {
       logger.warn(
         `Failed to register team coordinator tasks (attempt ${attempt}/${retries}): ${toErrorMessage(error)}`,
@@ -29,7 +35,11 @@ export async function registerTasksWithRetry(
     }
   }
 
-  logger.error("Failed to register team coordinator tasks after all retries");
+  logger.error(
+    tasksApiReady
+      ? "Failed to register team coordinator tasks after all retries"
+      : "runtime.getTasks never became available; team coordinator tasks were not registered",
+  );
 }
 
 export async function bootstrapTeamCoordinator(
