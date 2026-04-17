@@ -293,7 +293,10 @@ const twitterPostAction: Action = {
           actions: ["TWITTER_POST_FAILED"],
           source: message.content.source,
         });
-        return;
+        return {
+          success: false,
+          error: "User is not authorized to post tweets on behalf of this org",
+        };
       }
 
       // Prepare response content

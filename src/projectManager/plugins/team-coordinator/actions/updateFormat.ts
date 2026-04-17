@@ -198,7 +198,10 @@ export const updatesFormatAction: Action = {
         await callback({
           text: `❌ No team member found with username ${username}. Please make sure you are registered as a team member.`,
         });
-        return { success: true };
+        return {
+          success: false,
+          error: `No team member found with username ${username}`,
+        };
       }
 
       logger.info(`Found team member: ${JSON.stringify(teamMember)}`);
