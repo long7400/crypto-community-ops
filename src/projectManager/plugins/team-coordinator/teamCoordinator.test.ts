@@ -133,6 +133,29 @@ describe("team coordinator bootstrap", () => {
     expect(managedCheckInJob).toHaveBeenCalledTimes(1);
     expect(fallbackCheckInJob).not.toHaveBeenCalled();
   });
+
+  it("fails task registration when the tracker service load times out", async () => {
+    const runtime = {
+      agentId: "agent-id",
+      getService: vi.fn().mockReturnValue(null),
+      getServiceLoadPromise: vi.fn(() => new Promise(() => undefined)),
+      getTasks: vi.fn().mockResolvedValue([]),
+      deleteTask: vi.fn().mockResolvedValue(undefined),
+      registerTaskWorker: vi.fn(),
+      createTask: vi.fn().mockResolvedValue(undefined),
+    } as unknown as IAgentRuntime;
+
+    const registerPromise = registerTasks(runtime);
+    const rejection = expect(registerPromise).rejects.toThrow(
+      "TeamUpdateTrackerService load timed out after 5000ms",
+    );
+
+    await vi.advanceTimersByTimeAsync(5000);
+
+    await rejection;
+    expect(runtime.getTasks).not.toHaveBeenCalled();
+    expect(runtime.registerTaskWorker).not.toHaveBeenCalled();
+  });
 });
 
 describe("team coordinator platform readiness", () => {

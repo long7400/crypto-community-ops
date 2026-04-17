@@ -1,12 +1,43 @@
 import {
   type IAgentRuntime,
   logger,
-  type Service,
   type ServiceTypeName,
   type UUID,
 } from "@elizaos/core";
 import { toErrorMessage } from "./logging";
 import { TeamUpdateTrackerService } from "./services/updateTracker";
+
+const TRACKER_SERVICE_LOAD_TIMEOUT_MS = 5000;
+
+async function waitForTrackerService(
+  runtime: IAgentRuntime,
+  trackerServiceType: ServiceTypeName,
+): Promise<TeamUpdateTrackerService> {
+  return await new Promise<TeamUpdateTrackerService>((resolve, reject) => {
+    const timeoutId = setTimeout(() => {
+      reject(
+        new Error(
+          `TeamUpdateTrackerService load timed out after ${TRACKER_SERVICE_LOAD_TIMEOUT_MS}ms`,
+        ),
+      );
+    }, TRACKER_SERVICE_LOAD_TIMEOUT_MS);
+
+    (
+      runtime.getServiceLoadPromise(
+        trackerServiceType,
+      ) as Promise<TeamUpdateTrackerService>
+    ).then(
+      (service) => {
+        clearTimeout(timeoutId);
+        resolve(service);
+      },
+      (error) => {
+        clearTimeout(timeoutId);
+        reject(error);
+      },
+    );
+  });
+}
 
 export const registerTasks = async (
   runtime: IAgentRuntime,
@@ -30,9 +61,10 @@ export const registerTasks = async (
       logger.info(
         "Waiting for runtime-managed TeamUpdateTrackerService registration",
       );
-      teamUpdateService = (await runtime.getServiceLoadPromise(
+      teamUpdateService = await waitForTrackerService(
+        runtime,
         trackerServiceType,
-      )) as TeamUpdateTrackerService;
+      );
     }
   } catch (error) {
     logger.error(
