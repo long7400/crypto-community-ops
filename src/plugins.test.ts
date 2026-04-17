@@ -75,7 +75,7 @@ function getPluginMigrationTarget(plugin: Plugin | undefined): {
 } {
   const schema = plugin?.schema;
 
-  if (!schema) {
+  if (!plugin || !schema) {
     throw new Error(
       "@elizaos/plugin-sql default export does not expose schema; cannot run test migrations",
     );

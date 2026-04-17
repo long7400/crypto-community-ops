@@ -9,6 +9,7 @@ import {
   type OnboardingConfig,
   type Provider,
   Role,
+  stringToUuid,
   type UUID,
   type World,
 } from "@elizaos/core";
@@ -111,7 +112,8 @@ export async function initializeAllSystems(
 
   try {
     for (const server of servers) {
-      const worldId = createUniqueUuid(runtime, server.id);
+      const messageServerId = stringToUuid(server.id);
+      const worldId = createUniqueUuid(runtime, messageServerId);
       const ownerId = createUniqueUuid(runtime, server.ownerId);
 
       const existingWorld = await runtime.getWorld(worldId);
@@ -128,7 +130,7 @@ export async function initializeAllSystems(
       const world: World = {
         id: worldId,
         name: server.name,
-        messageServerId: worldId,
+        messageServerId,
         serverId: worldId,
         agentId: runtime.agentId,
         metadata: {
@@ -187,7 +189,7 @@ export async function startOnboardingDM(
       source: "discord",
       type: ChannelType.DM,
       channelId: msg.channelId,
-      messageServerId: worldId,
+      messageServerId: stringToUuid(guild.id),
       serverId: worldId,
       worldId: worldId,
     });

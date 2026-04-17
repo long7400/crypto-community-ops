@@ -14,7 +14,9 @@ async function waitForTrackerService(
   trackerServiceType: ServiceTypeName,
 ): Promise<TeamUpdateTrackerService> {
   return await new Promise<TeamUpdateTrackerService>((resolve, reject) => {
+    let settled = false;
     const timeoutId = setTimeout(() => {
+      settled = true;
       reject(
         new Error(
           `TeamUpdateTrackerService load timed out after ${TRACKER_SERVICE_LOAD_TIMEOUT_MS}ms`,
@@ -22,20 +24,29 @@ async function waitForTrackerService(
       );
     }, TRACKER_SERVICE_LOAD_TIMEOUT_MS);
 
-    (
-      runtime.getServiceLoadPromise(
-        trackerServiceType,
-      ) as Promise<TeamUpdateTrackerService>
-    ).then(
-      (service) => {
-        clearTimeout(timeoutId);
-        resolve(service);
-      },
-      (error) => {
-        clearTimeout(timeoutId);
-        reject(error);
-      },
-    );
+    const loadPromise = runtime.getServiceLoadPromise(
+      trackerServiceType,
+    ) as Promise<TeamUpdateTrackerService>;
+
+    loadPromise
+      .then(
+        (service) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          resolve(service);
+        },
+        (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          reject(error);
+        },
+      )
+      .catch(() => {
+        // The rejection handler above handles the normal path; this absorbs
+        // any unexpected post-timeout rejection noise without changing behavior.
+      });
   });
 }
 
