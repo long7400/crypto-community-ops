@@ -194,7 +194,7 @@ const twitterPostAction: Action = {
     _options: any,
     callback: HandlerCallback | undefined,
     _responses?: Memory[],
-  ): Promise<ActionResult | void | undefined> => {
+  ): Promise<ActionResult> => {
     try {
       if (!state)
         return { success: false, error: "Missing state for Twitter post" };

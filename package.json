@@ -24,7 +24,7 @@
 		"test:liaison": "vitest tests/liaison.test.ts",
 		"test:projectManager": "vitest tests/projectManager.test.ts",
 		"test:socialMediaManager": "vitest tests/socialMediaManager.test.ts",
-		"test:the-org": "vitest tests/communityManager.test.ts tests/devRel.test.ts tests/liaison.test.ts tests/projectManager.test.ts tests/socialMediaManager.test.ts"
+		"test:the-org": "vitest tests/communityManager.test.ts tests/devRel.test.ts tests/liaison.test.ts tests/projectManager.test.ts tests/socialMediaManager.test.ts tests/eli5Telegram.test.ts"
 	},
 	"dependencies": {
 		"@coral-xyz/anchor": "^0.31.1",
