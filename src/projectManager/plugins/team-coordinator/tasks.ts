@@ -2,6 +2,7 @@ import {
   type IAgentRuntime,
   logger,
   type Service,
+  type ServiceTypeName,
   type UUID,
 } from "@elizaos/core";
 import { toErrorMessage } from "./logging";
@@ -13,25 +14,31 @@ export const registerTasks = async (
 ) => {
   // Ensure worldId is set to the agent's ID if not provided
   const worldId = initialWorldId || (runtime.agentId as UUID);
+  const trackerServiceType =
+    TeamUpdateTrackerService.serviceType as ServiceTypeName;
 
-  // Try to get an existing service instance instead of creating a new one
-  let teamUpdateService: TeamUpdateTrackerService;
+  // Wait for the runtime-managed service instance instead of creating a fallback
+  let teamUpdateService: TeamUpdateTrackerService | null = null;
   try {
-    const existingService = runtime.getService(
-      TeamUpdateTrackerService.serviceType,
-    );
-    if (existingService) {
+    teamUpdateService = runtime.getService(
+      trackerServiceType,
+    ) as TeamUpdateTrackerService | null;
+
+    if (teamUpdateService) {
       logger.info("Using existing TeamUpdateTrackerService");
-      teamUpdateService = existingService as TeamUpdateTrackerService;
     } else {
-      logger.info("Creating new TeamUpdateTrackerService instance");
-      teamUpdateService = new TeamUpdateTrackerService(runtime);
+      logger.info(
+        "Waiting for runtime-managed TeamUpdateTrackerService registration",
+      );
+      teamUpdateService = (await runtime.getServiceLoadPromise(
+        trackerServiceType,
+      )) as TeamUpdateTrackerService;
     }
   } catch (error) {
-    logger.warn(
-      `Error getting existing service, creating new instance: ${toErrorMessage(error)}`,
+    logger.error(
+      `Error resolving TeamUpdateTrackerService for task registration: ${toErrorMessage(error)}`,
     );
-    teamUpdateService = new TeamUpdateTrackerService(runtime);
+    throw error;
   }
 
   // Clear existing tasks

@@ -14,6 +14,11 @@ import { toErrorMessage } from "./logging";
 import { CheckInService } from "./services/CheckInService";
 import { TeamUpdateTrackerService } from "./services/updateTracker";
 
+const TEAM_COORDINATOR_SERVICES = [
+  TeamUpdateTrackerService,
+  CheckInService,
+] as const;
+
 /**
  * Plugin for team coordination functionality
  * Handles team member management, availability tracking, and check-ins
@@ -36,9 +41,7 @@ export const teamCoordinatorPlugin: Plugin = {
     try {
       logger.info("Initializing Team Coordinator plugin...");
 
-      await bootstrapTeamCoordinator(runtime, {
-        services: [TeamUpdateTrackerService],
-      });
+      await bootstrapTeamCoordinator(runtime, {});
 
       logger.info("Team Coordinator plugin initialized successfully");
     } catch (error) {
@@ -49,7 +52,7 @@ export const teamCoordinatorPlugin: Plugin = {
     }
   },
   // List services that should be registered by the runtime
-  services: [TeamUpdateTrackerService, CheckInService],
+  services: [...TEAM_COORDINATOR_SERVICES],
 };
 
 export function initialize(runtime: IAgentRuntime) {

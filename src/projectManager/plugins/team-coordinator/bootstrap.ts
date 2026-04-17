@@ -1,4 +1,4 @@
-import { type IAgentRuntime, logger, type Service } from "@elizaos/core";
+import { type IAgentRuntime, logger } from "@elizaos/core";
 import { toErrorMessage } from "./logging";
 import { registerTasks as defaultRegisterTasks } from "./tasks";
 
@@ -35,16 +35,11 @@ export async function registerTasksWithRetry(
 export async function bootstrapTeamCoordinator(
   runtime: IAgentRuntime,
   options: {
-    services: Array<typeof Service>;
     registerTasks?: (runtime: IAgentRuntime) => Promise<void>;
     retries?: number;
     delayMs?: number;
   },
 ): Promise<void> {
-  for (const service of options.services) {
-    await runtime.registerService(service);
-  }
-
   void registerTasksWithRetry(runtime, options.registerTasks, {
     retries: options.retries,
     delayMs: options.delayMs,

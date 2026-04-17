@@ -9,10 +9,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { toErrorMessage } from "../logging";
 
 interface TeamMember {
   section: string;

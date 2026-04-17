@@ -8,6 +8,7 @@ import {
   requireDiscordClient,
 } from "./platform";
 import { CheckInService } from "./services/CheckInService";
+import { TeamUpdateTrackerService } from "./services/updateTracker";
 import {
   filterCheckInScheduleMemories,
   findReportChannelConfigForServer,
@@ -16,6 +17,7 @@ import {
   getTeamMembersConfigMemory,
   getTeamMembersRoomId,
 } from "./storage";
+import { registerTasks } from "./tasks";
 
 describe("team coordinator bootstrap", () => {
   beforeEach(() => {
@@ -53,24 +55,83 @@ describe("team coordinator bootstrap", () => {
     expect(register).toHaveBeenCalledTimes(1);
   });
 
-  it("registers services and starts deferred task registration from bootstrap", async () => {
+  it("starts deferred task registration from bootstrap without re-registering services", async () => {
     const runtime = {
       registerService: vi.fn().mockResolvedValue(undefined),
       getTasks: vi.fn().mockResolvedValue([]),
     } as unknown as IAgentRuntime;
 
     const register = vi.fn().mockResolvedValue(undefined);
-    const services = [{ serviceType: "A" }, { serviceType: "B" }] as any[];
 
     await bootstrapTeamCoordinator(runtime, {
-      services,
       registerTasks: register,
       retries: 1,
       delayMs: 1,
     });
 
-    expect(runtime.registerService).toHaveBeenCalledTimes(2);
+    expect(runtime.registerService).not.toHaveBeenCalled();
     expect(register).toHaveBeenCalledTimes(1);
+  });
+
+  it("starts bounded retry-based task registration from bootstrap", async () => {
+    const runtime = {
+      registerService: vi.fn().mockResolvedValue(undefined),
+      getTasks: undefined,
+    } as unknown as IAgentRuntime;
+
+    const register = vi.fn().mockResolvedValue(undefined);
+
+    await bootstrapTeamCoordinator(runtime, {
+      registerTasks: register,
+      retries: 3,
+      delayMs: 100,
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+    (runtime as IAgentRuntime & { getTasks: unknown }).getTasks = vi
+      .fn()
+      .mockResolvedValue([]);
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(register).toHaveBeenCalledTimes(1);
+    expect(runtime.registerService).not.toHaveBeenCalled();
+  });
+
+  it("waits for the runtime-managed tracker service before wiring task execution", async () => {
+    const fallbackCheckInJob = vi
+      .spyOn(TeamUpdateTrackerService.prototype, "checkInServiceJob")
+      .mockResolvedValue(undefined);
+    const managedCheckInJob = vi.fn().mockResolvedValue(undefined);
+    const managedService = {
+      checkInServiceJob: managedCheckInJob,
+    } as unknown as TeamUpdateTrackerService;
+    const registerTaskWorker = vi.fn();
+    const runtime = {
+      agentId: "agent-id",
+      getService: vi.fn().mockReturnValue(null),
+      getServiceLoadPromise: vi.fn().mockResolvedValue(managedService),
+      getTasks: vi.fn().mockResolvedValue([]),
+      deleteTask: vi.fn().mockResolvedValue(undefined),
+      registerTaskWorker,
+      createTask: vi.fn().mockResolvedValue(undefined),
+    } as unknown as IAgentRuntime;
+
+    await registerTasks(runtime);
+
+    const taskWorker = registerTaskWorker.mock.calls[0]?.[0] as {
+      execute: (
+        runtime: IAgentRuntime,
+        options: unknown,
+        task: unknown,
+      ) => Promise<void>;
+    };
+    await taskWorker.execute(runtime, {}, {});
+
+    expect(runtime.getServiceLoadPromise).toHaveBeenCalledWith(
+      TeamUpdateTrackerService.serviceType,
+    );
+    expect(managedCheckInJob).toHaveBeenCalledTimes(1);
+    expect(fallbackCheckInJob).not.toHaveBeenCalled();
   });
 });
 
