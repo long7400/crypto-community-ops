@@ -33,7 +33,9 @@ export const character: Character = {
       ? ["@elizaos/plugin-local-ai"]
       : []),
     "@elizaos/plugin-discord",
-    "@elizaos/plugin-telegram",
+    ...(process.env.COMMUNITY_MANAGER_TELEGRAM_BOT_TOKEN
+      ? ["@elizaos/plugin-telegram"]
+      : []),
     "@elizaos/plugin-twitter",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-video-understanding",

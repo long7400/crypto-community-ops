@@ -29,12 +29,14 @@ describe("Eli5 Telegram E2E", () => {
 		vi.clearAllMocks();
 	});
 
-	it("wires Eli5 with the telegram plugin and token secret", () => {
+	it("guards Eli5 telegram plugin loading behind the dedicated token while preserving the secret wiring", () => {
 		const secrets = character.settings?.secrets as
 			| Record<string, unknown>
 			| undefined;
 
-		expect(character.plugins).toContain("@elizaos/plugin-telegram");
+		expect((character.plugins ?? []).includes("@elizaos/plugin-telegram")).toBe(
+			Boolean(process.env.COMMUNITY_MANAGER_TELEGRAM_BOT_TOKEN),
+		);
 		expect(secrets).toHaveProperty("TELEGRAM_BOT_TOKEN");
 		expect(secrets?.TELEGRAM_BOT_TOKEN).toBe(
 			process.env.COMMUNITY_MANAGER_TELEGRAM_BOT_TOKEN,
