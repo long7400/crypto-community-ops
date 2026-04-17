@@ -1,7 +1,6 @@
 import {
   type Action,
   type ActionResult,
-  ChannelType,
   type Content,
   composePromptFromState,
   createUniqueUuid,
@@ -16,6 +15,14 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { stringifyForLog, toErrorMessage } from "../logging";
+import { requireDiscordClient } from "../platform";
+import {
+  ensureCoordinatorRoom,
+  getCheckInSchedulesRoomId,
+  getReportChannelConfigMemory,
+  getReportChannelConfigRoomId,
+} from "../storage";
 
 interface DiscordComponentInteraction {
   customId: string;
@@ -33,6 +40,10 @@ interface DiscordService extends Service {
     };
   };
 }
+
+type DiscordClientService = {
+  client?: DiscordService["client"];
+};
 
 interface ReportChannelConfig {
   serverId?: string;
@@ -53,102 +64,6 @@ interface CheckInSchedule {
   source: string;
   createdAt: string;
   serverId: string;
-}
-
-// Required Discord configuration fields
-const REQUIRED_DISCORD_FIELDS = [
-  "PROJECT_MANAGER_DISCORD_APPLICATION_ID",
-  "PROJECT_MANAGER_DISCORD_API_TOKEN",
-];
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function stringifyForLog(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-/**
- * Validates the Discord configuration for a specific server.
- * @param {IAgentRuntime} runtime - The Agent runtime.
- * @param {string} serverId - The ID of the server to validate.
- * @returns {Promise<{ isValid: boolean; error?: string }>}
- */
-async function validateDiscordConfig(
-  runtime: IAgentRuntime,
-  serverId: string,
-): Promise<{ isValid: boolean; error?: string }> {
-  try {
-    // logger.info(`Validating Discord config for server ${serverId}`);
-    // const worldSettings = await getWorldSettings(runtime, serverId);
-
-    // // Check required fields
-    // for (const field of REQUIRED_DISCORD_FIELDS) {
-    //   if (!worldSettings[field] || worldSettings[field].value === null) {
-    //     return {
-    //       isValid: false,
-    //       error: `Missing required Discord configuration: ${field}`,
-    //     };
-    //   }
-    // }
-
-    return { isValid: true };
-  } catch (error: unknown) {
-    logger.error(`Error validating Discord config: ${toErrorMessage(error)}`);
-    return {
-      isValid: false,
-      error: "Error validating Discord configuration",
-    };
-  }
-}
-
-/**
- * Ensures a Discord client exists and is ready
- * @param {IAgentRuntime} runtime - The Agent runtime
- * @returns {Promise<DiscordService>} The Discord client
- */
-async function ensureDiscordClient(
-  runtime: IAgentRuntime,
-): Promise<DiscordService> {
-  logger.info("Ensuring Discord client is available");
-
-  try {
-    const discordService = runtime.getService("discord") as DiscordService;
-    logger.info(`Discord service found: ${!!discordService}`);
-
-    if (!discordService) {
-      logger.error("Discord service not found in runtime");
-      throw new Error("Discord service not found");
-    }
-
-    // Log what's in the service to see its structure
-    logger.info(
-      `Discord service structure: ${JSON.stringify(Object.keys(discordService))}`,
-    );
-
-    // Check if client exists and is ready
-    logger.info(`Discord client exists: ${!!discordService?.client}`);
-    if (!discordService?.client) {
-      logger.error("Discord client not initialized in service");
-      throw new Error("Discord client not initialized");
-    }
-
-    logger.info("Discord client successfully validated");
-    return discordService;
-  } catch (error: unknown) {
-    const err = error as Error;
-    logger.error(
-      `Error ensuring Discord client: ${err.message || "Unknown error"}`,
-    );
-    logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
-    throw error;
-  }
 }
 
 export const recordCheckInAction: Action = {
@@ -215,13 +130,6 @@ export const recordCheckInAction: Action = {
         `User ${message.entityId} has admin privileges with role: ${userRole}`,
       );
       state.data.isAdmin = true;
-      // // Validate Discord configuration
-      // const validation = await validateDiscordConfig(runtime, serverId);
-      // if (!validation.isValid) {
-      //   logger.error(`Discord validation failed: ${validation.error}`);
-      //   return false;
-      // }
-
       // Ensure Discord client is available
 
       return true;
@@ -250,10 +158,14 @@ export const recordCheckInAction: Action = {
 
       // Get Discord client first
       logger.info("Attempting to get Discord client...");
-      let discordService: DiscordService;
+      let discordService: DiscordClientService;
 
       try {
-        discordService = await ensureDiscordClient(runtime);
+        discordService = {
+          client: (await requireDiscordClient(
+            runtime,
+          )) as DiscordService["client"],
+        };
         logger.info("Successfully retrieved Discord service with client");
       } catch (error: unknown) {
         const discordError = error as Error;
@@ -357,24 +269,13 @@ export const recordCheckInAction: Action = {
 
       // Check if report channel config exists for this server
       logger.info("Checking for existing report channel configuration");
-      const roomId = createUniqueUuid(runtime, "report-channel-config");
+      const roomId = getReportChannelConfigRoomId(runtime);
       logger.info("Generated roomId:", roomId);
 
-      // Add table name to getMemories call
-      const memories = await runtime.getMemories({
-        roomId: roomId,
-        tableName: "messages",
-      });
-      logger.info("Retrieved memories:", JSON.stringify(memories, null, 2));
-      logger.debug(`Raw memories object: ${stringifyForLog(memories)}`);
-
-      logger.info("Looking for existing config with serverId:", serverId);
-      const existingConfig = memories.find((memory) => {
-        logger.info(`Checking memory: ${stringifyForLog(memory)}`);
-        const isReportConfig = memory.content.type === "report-channel-config";
-
-        return isReportConfig;
-      });
+      const existingConfig = await getReportChannelConfigMemory(
+        runtime,
+        serverId,
+      );
       logger.info(`Found existing config: ${stringifyForLog(existingConfig)}`);
 
       // Get message source
@@ -636,13 +537,11 @@ export const recordCheckInAction: Action = {
           // First create the room to avoid foreign key constraint error
           logger.info(`Creating room with ID: ${roomId}`);
           try {
-            await runtime.ensureRoomExists({
-              id: roomId as UUID,
-              name: "Report Channel Configurations",
-              source: "team-coordinator",
-              type: ChannelType.GROUP,
-              worldId: runtime.agentId,
-            });
+            await ensureCoordinatorRoom(
+              runtime,
+              roomId as UUID,
+              "Report Channel Configurations",
+            );
             logger.info(`Successfully created room with ID: ${roomId}`);
           } catch (roomError: unknown) {
             const roomErrorInstance = roomError as Error;
@@ -698,7 +597,7 @@ export const recordCheckInAction: Action = {
           serverId: serverId,
         };
 
-        const checkInRoomId = createUniqueUuid(runtime, "check-in-schedules");
+        const checkInRoomId = getCheckInSchedulesRoomId(runtime);
 
         // Use the same roomId as above to avoid foreign key constraint error
         logger.info(
@@ -707,13 +606,11 @@ export const recordCheckInAction: Action = {
 
         // Ensure the room exists before storing the memory
         try {
-          await runtime.ensureRoomExists({
-            id: checkInRoomId as UUID,
-            name: "Check-in Schedules",
-            source: "team-coordinator",
-            type: ChannelType.GROUP,
-            worldId: runtime.agentId,
-          });
+          await ensureCoordinatorRoom(
+            runtime,
+            checkInRoomId as UUID,
+            "Check-in Schedules",
+          );
           logger.info(`Successfully ensured room exists with ID: ${roomId}`);
         } catch (roomError: unknown) {
           const err = roomError as Error;

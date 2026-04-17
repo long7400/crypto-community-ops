@@ -18,6 +18,8 @@ import {
 } from "@elizaos/core";
 import { sendCheckInReportForm } from "../forms/checkInForm";
 import { sendCheckInScheduleForm } from "../forms/scheduleForm";
+import { stringifyForLog, toErrorMessage } from "../logging";
+import { requireDiscordClient } from "../platform";
 
 interface DiscordComponentInteraction {
   customId: string;
@@ -40,102 +42,6 @@ interface TextChannel {
   id: string;
   name: string;
   type: string;
-}
-
-// Required Discord configuration fields
-const REQUIRED_DISCORD_FIELDS = [
-  "PROJECT_MANAGER_DISCORD_APPLICATION_ID",
-  "PROJECT_MANAGER_DISCORD_API_TOKEN",
-];
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function stringifyForLog(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
-
-/**
- * Validates the Discord configuration for a specific server.
- * @param {IAgentRuntime} runtime - The Agent runtime.
- * @param {string} serverId - The ID of the server to validate.
- * @returns {Promise<{ isValid: boolean; error?: string }>}
- */
-async function validateDiscordConfig(
-  runtime: IAgentRuntime,
-  serverId: string,
-): Promise<{ isValid: boolean; error?: string }> {
-  try {
-    // logger.info(`Validating Discord config for server ${serverId}`);
-    // const worldSettings = await getWorldSettings(runtime, serverId);
-
-    // // Check required fields
-    // for (const field of REQUIRED_DISCORD_FIELDS) {
-    //   if (!worldSettings[field] || worldSettings[field].value === null) {
-    //     return {
-    //       isValid: false,
-    //       error: `Missing required Discord configuration: ${field}`,
-    //     };
-    //   }
-    // }
-
-    return { isValid: true };
-  } catch (error: unknown) {
-    logger.error(`Error validating Discord config: ${toErrorMessage(error)}`);
-    return {
-      isValid: false,
-      error: "Error validating Discord configuration",
-    };
-  }
-}
-
-/**
- * Ensures a Discord client exists and is ready
- * @param {IAgentRuntime} runtime - The Agent runtime
- * @returns {Promise<any>} The Discord client
- */
-async function ensureDiscordClient(
-  runtime: IAgentRuntime,
-): Promise<DiscordService> {
-  logger.info("Ensuring Discord client is available");
-
-  try {
-    const discordService = runtime.getService("discord") as DiscordService;
-    logger.info(`Discord service found: ${!!discordService}`);
-
-    if (!discordService) {
-      logger.error("Discord service not found in runtime");
-      throw new Error("Discord service not found");
-    }
-
-    // Log what's in the service to see its structure
-    logger.info(
-      `Discord service structure: ${JSON.stringify(Object.keys(discordService))}`,
-    );
-
-    // Check if client exists and is ready
-    logger.info(`Discord client exists: ${!!discordService?.client}`);
-    if (!discordService?.client) {
-      logger.error("Discord client not initialized in service");
-      throw new Error("Discord client not initialized");
-    }
-
-    logger.info("Discord client successfully validated");
-    return discordService;
-  } catch (error: unknown) {
-    const err = error as Error;
-    logger.error(
-      `Error ensuring Discord client: ${err.message || "Unknown error"}`,
-    );
-    logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
-    throw error;
-  }
 }
 
 export const checkInFormatAction: Action = {
@@ -197,13 +103,6 @@ export const checkInFormatAction: Action = {
         `User ${message.entityId} has admin privileges with role: ${userRole}`,
       );
       state.data.isAdmin = true;
-      // // Validate Discord configuration
-      // const validation = await validateDiscordConfig(runtime, serverId);
-      // if (!validation.isValid) {
-      //   logger.error(`Discord validation failed: ${validation.error}`);
-      //   return false;
-      // }
-
       // Ensure Discord client is available
 
       return true;
@@ -231,7 +130,11 @@ export const checkInFormatAction: Action = {
       let discordService: DiscordService;
 
       try {
-        discordService = await ensureDiscordClient(runtime);
+        discordService = {
+          client: (await requireDiscordClient(
+            runtime,
+          )) as DiscordService["client"],
+        } as DiscordService;
         logger.info("Successfully retrieved Discord service with client");
       } catch (error: unknown) {
         const discordError = error as Error;

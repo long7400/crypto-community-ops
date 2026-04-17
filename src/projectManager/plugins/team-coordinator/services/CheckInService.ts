@@ -14,19 +14,13 @@ import type {
   User,
 } from "discord.js";
 import type { CheckInSchedule } from "../../../types";
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function stringifyForLog(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
+import { stringifyForLog, toErrorMessage } from "../logging";
+import { requireDiscordClient } from "../platform";
+import {
+  ensureCoordinatorRoom,
+  getCheckInSchedulesRoomId,
+  getReportChannelConfigRoomId,
+} from "../storage";
 
 // Extension of CheckInSchedule with additional fields
 interface ExtendedCheckInSchedule extends CheckInSchedule {
@@ -196,45 +190,6 @@ export class CheckInService extends Service {
     logger.info("CheckIn Service initialized and listening for events");
   }
 
-  public async ensureDiscordClient(
-    runtime: IAgentRuntime,
-  ): Promise<DiscordService> {
-    logger.info("Ensuring Discord client is available");
-
-    try {
-      const discordService = runtime.getService("discord");
-      logger.info(`Discord service found: ${!!discordService}`);
-
-      if (!discordService) {
-        logger.error("Discord service not found in runtime");
-        throw new Error("Discord service not found");
-      }
-
-      // Cast to DiscordService after null check
-      const typedDiscordService = discordService as unknown as DiscordService;
-
-      // Log what's in the service to see its structure
-      logger.info(
-        `Discord service structure: ${JSON.stringify(Object.keys(typedDiscordService))}`,
-      );
-
-      // Check if client exists and is ready
-      logger.info(`Discord client exists: ${!!typedDiscordService?.client}`);
-      if (!typedDiscordService?.client) {
-        logger.error("Discord client not initialized in service");
-        throw new Error("Discord client not initialized");
-      }
-
-      logger.info("Discord client successfully validated");
-      return typedDiscordService;
-    } catch (error: unknown) {
-      const err = error as Error;
-      logger.error(`Error ensuring Discord client: ${err.message}`);
-      logger.error(`Error stack: ${err.stack}`);
-      throw error;
-    }
-  }
-
   private async handleCheckInSubmission(interaction: ExtendedInteraction) {
     try {
       logger.info("=== HANDLING CHECKIN SUBMISSION ===");
@@ -244,9 +199,11 @@ export class CheckInService extends Service {
       let userDetails: User | null = null;
 
       // TODO : get discord service cool or in start
-      const discordService = (await this.ensureDiscordClient(
-        this.runtime,
-      )) as DiscordService;
+      const discordService = {
+        client: (await requireDiscordClient(
+          this.runtime,
+        )) as DiscordService["client"],
+      } as DiscordService;
 
       // Fetch user details
       try {
@@ -305,7 +262,7 @@ export class CheckInService extends Service {
       };
 
       // Store the schedule
-      const roomId = createUniqueUuid(this.runtime, "check-in-schedules");
+      const roomId = getCheckInSchedulesRoomId(this.runtime);
       await this.storeCheckInSchedule(roomId, schedule);
 
       logger.info(
@@ -356,13 +313,11 @@ export class CheckInService extends Service {
   ): Promise<void> {
     try {
       // First create the room if it doesn't exist
-      await this.runtime.ensureRoomExists({
-        id: roomId as UUID,
-        name: "Check-in Schedules",
-        source: "team-coordinator",
-        type: ChannelType.GROUP,
-        worldId: this.runtime.agentId,
-      });
+      await ensureCoordinatorRoom(
+        this.runtime,
+        roomId as UUID,
+        "Check-in Schedules",
+      );
 
       const timestamp = Date.now();
       const memory = {
@@ -457,15 +412,13 @@ export class CheckInService extends Service {
     config: ReportChannelConfig,
   ): Promise<void> {
     try {
-      const roomId = createUniqueUuid(this.runtime, "report-channel-config");
+      const roomId = getReportChannelConfigRoomId(this.runtime);
 
-      await this.runtime.ensureRoomExists({
-        id: roomId as UUID,
-        name: "Report Channel Configurations",
-        source: "team-coordinator",
-        type: ChannelType.GROUP,
-        worldId: this.runtime.agentId,
-      });
+      await ensureCoordinatorRoom(
+        this.runtime,
+        roomId as UUID,
+        "Report Channel Configurations",
+      );
 
       const memory = {
         id: createUniqueUuid(this.runtime, `report-channel-config'}`),
@@ -494,16 +447,14 @@ export class CheckInService extends Service {
 
   private async loadReportChannelConfigs(): Promise<void> {
     try {
-      const roomId = createUniqueUuid(this.runtime, "report-channel-config");
+      const roomId = getReportChannelConfigRoomId(this.runtime);
 
       // Ensure the room exists before trying to access it
-      await this.runtime.ensureRoomExists({
-        id: roomId as UUID,
-        name: "Report Channel Configurations",
-        source: "team-coordinator",
-        type: ChannelType.GROUP,
-        worldId: this.runtime.agentId,
-      });
+      await ensureCoordinatorRoom(
+        this.runtime,
+        roomId as UUID,
+        "Report Channel Configurations",
+      );
 
       const memories = await this.runtime.getMemories({
         roomId: roomId as UUID,

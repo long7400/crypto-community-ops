@@ -16,19 +16,9 @@ import {
   type UUID,
 } from "@elizaos/core";
 import type { TeamMemberUpdate } from "../../../types";
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function stringifyForLog(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
+import { stringifyForLog, toErrorMessage } from "../logging";
+import { getDiscordClient } from "../platform";
+import { getReportChannelConfigMemory } from "../storage";
 
 interface EntityPlatformMetadata {
   metadata?: {
@@ -88,39 +78,19 @@ async function postUpdateToDiscordChannel(
     logger.info("=== POST TEAM MEMBER UPDATE TO DISCORD START ===");
 
     // Get the Discord service
-    const discordService = runtime.getService(
-      "discord",
-    ) as IDiscordService | null;
-    if (!discordService) {
-      logger.error("Discord service not available");
+    const discordResult = await getDiscordClient(runtime);
+    if (!discordResult.ok) {
+      logger.error(discordResult.error);
       return false;
     }
+
+    const discordService = {
+      client: discordResult.client,
+    } as IDiscordService;
 
     logger.info("Discord service retrieved successfully");
 
     // Get report channel config
-    const roomId = createUniqueUuid(runtime, "report-channel-config");
-    logger.info(`Generated roomId for config: ${roomId}`);
-
-    const memories = await runtime.getMemories({
-      roomId: roomId,
-      tableName: "messages",
-    });
-
-    logger.info(
-      `Retrieved report channel configs: ${stringifyForLog({
-        count: memories.length,
-        configs: memories.map((m) => ({
-          type: m.content?.type,
-          channelId: m.content?.config
-            ? (m.content.config as ReportChannelConfig).channelId
-            : undefined,
-        })),
-      })}`,
-    );
-
-    // TODO : fetch server id of channel id
-
     // Get all guilds/servers
     const guilds = discordService.client.guilds.cache;
     logger.info(`Found ${guilds.size} Discord servers`);
@@ -146,21 +116,7 @@ async function postUpdateToDiscordChannel(
     }
 
     // Find config for this server
-    const config = memories.find((memory) => {
-      const serverMatch = targetGuild ? targetGuild.id : undefined;
-      const configData = memory.content?.config as
-        | ReportChannelConfig
-        | undefined;
-      logger.info(
-        `Checking config: ${stringifyForLog({
-          configType: memory.content?.type,
-          configServerId: configData?.serverId,
-          targetGuildId: targetGuild ? targetGuild.id : undefined,
-          matches: serverMatch,
-        })}`,
-      );
-      return memory.content?.type === "report-channel-config" && serverMatch;
-    });
+    const config = await getReportChannelConfigMemory(runtime, targetGuild.id);
 
     if (!config) {
       logger.warn(
@@ -169,7 +125,7 @@ async function postUpdateToDiscordChannel(
       return false;
     }
 
-    const configData = config.content.config as ReportChannelConfig;
+    const configData = config.content?.config as ReportChannelConfig;
     logger.info(
       `Found report channel config: ${stringifyForLog({
         configId: config.id,

@@ -4,11 +4,8 @@ import {
   type Service,
   type UUID,
 } from "@elizaos/core";
+import { toErrorMessage } from "./logging";
 import { TeamUpdateTrackerService } from "./services/updateTracker";
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
 
 export const registerTasks = async (
   runtime: IAgentRuntime,

@@ -14,10 +14,7 @@ import {
   parseKeyValueXml,
   type State,
 } from "@elizaos/core";
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { toErrorMessage } from "../../projectManager/plugins/team-coordinator/logging";
 
 /**
  * Template for generating a tweet in the style and voice of a given agent.

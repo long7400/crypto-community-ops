@@ -1,7 +1,6 @@
 import {
   type Action,
   type ActionResult,
-  ChannelType,
   createUniqueUuid,
   getUserServerRole,
   type HandlerCallback,
@@ -12,19 +11,12 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function stringifyForLog(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
+import { stringifyForLog, toErrorMessage } from "../logging";
+import {
+  ensureCoordinatorRoom,
+  getTeamMembersConfigMemory,
+  getTeamMembersRoomId,
+} from "../storage";
 
 interface TeamMember {
   section: string;
@@ -44,20 +36,6 @@ interface TeamMemberConfig {
 }
 
 /**
- * Creates a consistent room ID for team members storage
- * @param serverId The server ID
- * @returns A consistent room ID string
- */
-function getTeamMembersRoomId(runtime: IAgentRuntime, serverId: string): UUID {
-  // Create a consistent hash based on serverId
-  const serverHash = serverId.replace(/[^a-zA-Z0-9]/g, "").substring(0, 8);
-
-  const roomId = createUniqueUuid(runtime, `team-members-${serverHash}`);
-
-  return roomId;
-}
-
-/**
  * Fetches team members for a specific server from memory
  * @param runtime The agent runtime
  * @param serverId The ID of the server to fetch team members for
@@ -70,33 +48,15 @@ async function fetchTeamMembersForServer(
   try {
     logger.info(`Fetching team members for server ${serverId}`);
 
-    // Create the room ID in a consistent way
-    const serverSpecificRoomId = getTeamMembersRoomId(runtime, serverId);
-
-    // Get all memories from the team members room
-    const memories = await runtime.getMemories({
-      roomId: serverSpecificRoomId,
-      tableName: "messages",
-    });
-
-    logger.info(
-      `Retrieved ${memories.length} memories from room ${serverSpecificRoomId}`,
+    const teamMembersMemoryId = createUniqueUuid(
+      runtime,
+      `store-team-members-${serverId.replace(/[^a-zA-Z0-9]/g, "")}`,
     );
-
-    // Filter to only include team member records
-    const teamMemberMemories = memories.filter(
-      (memory) =>
-        memory.content &&
-        memory.content.type === "team-member" &&
-        memory.content.teamMember,
-    );
-
-    logger.info(`Found ${teamMemberMemories.length} team member records`);
-
-    // Extract and return the team members
-    const teamMembers = teamMemberMemories.map(
-      (memory) => memory.content.teamMember as TeamMember,
-    );
+    const existingConfig = await getTeamMembersConfigMemory(runtime, serverId);
+    const teamMembers =
+      (existingConfig?.content?.config?.teamMembers as
+        | TeamMember[]
+        | undefined) || [];
 
     // Log for debugging
     logger.info(
@@ -382,25 +342,19 @@ export const addTeamMemberAction: Action = {
           `Validated ${validatedTeamMembers.length} team members with proper information`,
         );
 
-        const serverHash = serverId.replace(/[^a-zA-Z0-9]/g, "");
-
-        const roomIdForStoringTeamMembers = createUniqueUuid(
+        const roomIdForStoringTeamMembers = getTeamMembersRoomId(
           runtime,
-          `store-team-members-${serverHash}`,
+          serverId,
+        );
+        const teamMembersMemoryId = createUniqueUuid(
+          runtime,
+          `store-team-members-${serverId.replace(/[^a-zA-Z0-9]/g, "")}`,
         );
 
-        // Add table name to getMemories call
-        const memoriesForStoringTeamMembers = await runtime.getMemories({
-          roomId: roomIdForStoringTeamMembers as UUID,
-          tableName: "messages",
-        });
-
-        const existingConfig = memoriesForStoringTeamMembers.find((memory) => {
-          logger.info(`Checking memory: ${stringifyForLog(memory)}`);
-          const isTeamMembersExist =
-            memory.content.type === "store-team-members-memory";
-          return isTeamMembersExist;
-        });
+        const existingConfig = await getTeamMembersConfigMemory(
+          runtime,
+          serverId,
+        );
         logger.info(
           `Found existing config: ${stringifyForLog(existingConfig)}`,
         );
@@ -426,13 +380,11 @@ export const addTeamMemberAction: Action = {
               `Creating room with ID: ${roomIdForStoringTeamMembers}`,
             );
             try {
-              await runtime.ensureRoomExists({
-                id: roomIdForStoringTeamMembers as UUID,
-                name: "Storing Members config",
-                source: "team-coordinator",
-                type: ChannelType.GROUP,
-                worldId: runtime.agentId,
-              });
+              await ensureCoordinatorRoom(
+                runtime,
+                roomIdForStoringTeamMembers as UUID,
+                "Storing Members config",
+              );
               logger.info(
                 `Successfully created room with ID: ${roomIdForStoringTeamMembers}`,
               );
@@ -447,7 +399,7 @@ export const addTeamMemberAction: Action = {
             }
 
             const memory = {
-              id: createUniqueUuid(runtime, `store-team-members-${serverHash}`),
+              id: teamMembersMemoryId,
               entityId: runtime.agentId,
               agentId: runtime.agentId,
               content: {
@@ -475,7 +427,7 @@ export const addTeamMemberAction: Action = {
           );
 
           // Fetch existing team members from the config
-          const configData = existingConfig.content.config as TeamMemberConfig;
+          const configData = existingConfig.content?.config as TeamMemberConfig;
           const existingTeamMembers = configData?.teamMembers || [];
           logger.info(
             `Found ${existingTeamMembers.length} existing team members`,
@@ -531,7 +483,7 @@ export const addTeamMemberAction: Action = {
 
             // Update the config with the new team members
             const updatedConfig = {
-              ...(existingConfig.content.config as TeamMemberConfig),
+              ...(existingConfig.content?.config as TeamMemberConfig),
               teamMembers: updatedTeamMembers,
               lastUpdated: Date.now(),
             };
@@ -539,8 +491,9 @@ export const addTeamMemberAction: Action = {
             // Update the memory with the new config
             if (existingConfig.id) {
               await runtime.updateMemory({
-                id: existingConfig.id,
-                ...existingConfig,
+                ...(existingConfig as Partial<Memory>),
+                id: existingConfig.id as UUID,
+                roomId: existingConfig.roomId as UUID,
                 content: {
                   ...existingConfig.content,
                   config: updatedConfig,

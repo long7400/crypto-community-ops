@@ -1,9 +1,6 @@
 import type { HandlerCallback } from "@elizaos/core";
 import { type Content, type IAgentRuntime, logger } from "@elizaos/core";
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
+import { toErrorMessage } from "../logging";
 
 // Define interfaces for Discord component types
 interface DiscordComponent {

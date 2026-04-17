@@ -9,19 +9,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
-
-function toErrorMessage(error: unknown): string {
-  return error instanceof Error ? error.message : String(error);
-}
-
-function stringifyForLog(value: unknown): string {
-  if (typeof value === "string") return value;
-  try {
-    return JSON.stringify(value, null, 2);
-  } catch {
-    return String(value);
-  }
-}
+import { stringifyForLog, toErrorMessage } from "../logging";
 
 interface EntityPlatformMetadata {
   metadata?: {
