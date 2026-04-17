@@ -414,15 +414,19 @@ const twitterPostAction: Action = {
         actions: ["TWITTER_POST_TASK_NEEDS_CONFIRM"],
       });
 
-      logger.info(
-        "TWITTER_POST_TASK_NEEDS_CONFIRM",
-        JSON.stringify(
-          await runtime.getTasks({
-            roomId: message.roomId,
-            tags: ["TWITTER_POST"],
-          }),
-        ),
-      );
+      try {
+        logger.info(
+          "TWITTER_POST_TASK_NEEDS_CONFIRM",
+          JSON.stringify(
+            await runtime.getTasks({
+              roomId: message.roomId,
+              tags: ["TWITTER_POST"],
+            }),
+          ),
+        );
+      } catch (logErr) {
+        logger.warn(`Failed to fetch tasks for log: ${toErrorMessage(logErr)}`);
+      }
 
       return { success: true, text: responseContent.text };
     } catch (error) {

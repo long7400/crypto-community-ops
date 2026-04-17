@@ -206,7 +206,7 @@ export class CommunityManagerService extends Service {
       return;
     }
     const shouldGreetUser =
-      world.metadata?.settings["SHOULD_GREET_NEW_PERSONS"]?.value;
+      world.metadata?.settings?.["SHOULD_GREET_NEW_PERSONS"]?.value;
 
     if (
       !(
@@ -219,7 +219,7 @@ export class CommunityManagerService extends Service {
     }
 
     const greetingMsgSettings =
-      world.metadata?.settings["GREETING_MESSAGE"]?.value;
+      world.metadata?.settings?.["GREETING_MESSAGE"]?.value;
 
     const userName =
       newMember.first_name +
