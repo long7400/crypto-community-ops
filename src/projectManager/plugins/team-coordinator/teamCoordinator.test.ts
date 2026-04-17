@@ -7,6 +7,7 @@ import {
   getTelegramBot,
   requireDiscordClient,
 } from "./platform";
+import { CheckInService } from "./services/CheckInService";
 import {
   filterCheckInScheduleMemories,
   findReportChannelConfigForServer,
@@ -219,5 +220,62 @@ describe("team coordinator shared storage", () => {
       scheduleId: "schedule-1",
       serverId: "server-123",
     });
+  });
+
+  it("keeps existing report channel configs readable when serverId is missing", () => {
+    const reportConfig = findReportChannelConfigForServer(
+      [
+        { content: { type: "other" } },
+        {
+          content: {
+            type: "report-channel-config",
+            config: { channelId: "legacy-channel" },
+          },
+        },
+      ] as any,
+      "server-123",
+    );
+
+    expect(reportConfig).toBeDefined();
+    if (!reportConfig?.content) throw new Error("expected report config");
+    expect(reportConfig.content.config).toEqual({
+      channelId: "legacy-channel",
+    });
+  });
+});
+
+describe("team coordinator interaction responses", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("falls back to a runtime memory response when reply methods are unavailable", async () => {
+    const createMemory = vi.fn().mockResolvedValue(undefined);
+    const runtime = {
+      agentId: "agent-id",
+      createMemory,
+    } as unknown as IAgentRuntime;
+
+    const service = new CheckInService(runtime);
+
+    await (service as any).respondToInteraction(
+      { customId: "submit_checkin_schedule", roomId: "room-123" },
+      "Ack",
+      true,
+    );
+
+    expect(createMemory).toHaveBeenCalledTimes(1);
+    expect(createMemory).toHaveBeenCalledWith(
+      expect.objectContaining({
+        roomId: "room-123",
+        content: expect.objectContaining({
+          type: "discord-response",
+          text: "Ack",
+          ephemeral: true,
+          source: "team-coordinator",
+        }),
+      }),
+      "messages",
+    );
   });
 });

@@ -71,6 +71,7 @@ interface ExtendedInteraction {
     server_info?: string[]; // Added for server info
   };
   guildId?: string; // Added for server ID
+  roomId?: UUID | string;
 }
 
 interface DiscordService extends Service {
@@ -96,12 +97,50 @@ export class CheckInService extends Service {
     content: string,
     ephemeral = true,
   ): Promise<void> {
-    if (!interaction?.isRepliable?.()) return;
-    if (interaction.deferred || interaction.replied) {
-      await interaction.followUp?.({ content, ephemeral });
+    if (interaction?.isRepliable?.()) {
+      if (interaction.deferred || interaction.replied) {
+        await interaction.followUp?.({ content, ephemeral });
+        return;
+      }
+
+      await interaction.reply?.({ content, ephemeral });
       return;
     }
-    await interaction.reply?.({ content, ephemeral });
+
+    if (interaction.reply) {
+      await interaction.reply({ content, ephemeral });
+      return;
+    }
+
+    if (interaction.followUp) {
+      await interaction.followUp({ content, ephemeral });
+      return;
+    }
+
+    logger.warn(
+      `No direct interaction reply methods found for ${interaction.customId}; sending callback-style response`,
+    );
+
+    await this.runtime.createMemory(
+      {
+        id: createUniqueUuid(
+          this.runtime,
+          `checkin-response-${interaction.customId}-${Date.now()}`,
+        ),
+        entityId: this.runtime.agentId,
+        agentId: this.runtime.agentId,
+        roomId:
+          (interaction.roomId as UUID | undefined) ?? this.runtime.agentId,
+        content: {
+          type: "discord-response",
+          text: content,
+          ephemeral,
+          source: "team-coordinator",
+        },
+        createdAt: Date.now(),
+      },
+      "messages",
+    );
   }
 
   async start(): Promise<void> {

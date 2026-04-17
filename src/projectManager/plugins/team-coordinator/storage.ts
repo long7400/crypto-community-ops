@@ -94,10 +94,20 @@ export function findReportChannelConfigForServer(
   memories: CoordinatorMemory[],
   serverId: string,
 ): CoordinatorMemory | undefined {
-  return memories.find(
+  const matchingConfig = memories.find(
     (memory) =>
       memory.content?.type === "report-channel-config" &&
       memory.content?.config?.serverId === serverId,
+  );
+
+  if (matchingConfig) {
+    return matchingConfig;
+  }
+
+  return memories.find(
+    (memory) =>
+      memory.content?.type === "report-channel-config" &&
+      !memory.content?.config?.serverId,
   );
 }
 
