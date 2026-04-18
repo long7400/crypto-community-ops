@@ -55,7 +55,7 @@ describe("team coordinator bootstrap", () => {
     expect(register).toHaveBeenCalledTimes(1);
   });
 
-  it("logs targeted readiness diagnostics when runtime.getTasks is unavailable", async () => {
+  it("logs targeted readiness diagnostics and rejects when runtime.getTasks is unavailable", async () => {
     const debugSpy = vi
       .spyOn(logger, "debug")
       .mockImplementation(() => undefined);
@@ -72,10 +72,13 @@ describe("team coordinator bootstrap", () => {
       retries: 2,
       delayMs: 100,
     });
+    const rejection = expect(promise).rejects.toThrow(
+      "runtime.getTasks never became available; team coordinator tasks were not registered",
+    );
 
     await vi.advanceTimersByTimeAsync(100);
     await vi.advanceTimersByTimeAsync(100);
-    await promise;
+    await rejection;
 
     expect(register).not.toHaveBeenCalled();
     expect(debugSpy).toHaveBeenCalledWith(
@@ -89,7 +92,7 @@ describe("team coordinator bootstrap", () => {
     );
   });
 
-  it("keeps terminal registration failure logging when task registration throws after readiness", async () => {
+  it("keeps terminal registration failure logging and rejects when task registration throws after readiness", async () => {
     const warnSpy = vi
       .spyOn(logger, "warn")
       .mockImplementation(() => undefined);
@@ -106,9 +109,12 @@ describe("team coordinator bootstrap", () => {
       retries: 2,
       delayMs: 100,
     });
+    const rejection = expect(promise).rejects.toThrow(
+      "TEAM_COORDINATOR_TASK_REGISTRATION_FAILED: Failed to register team coordinator tasks after all retries",
+    );
 
     await vi.advanceTimersByTimeAsync(100);
-    await promise;
+    await rejection;
 
     expect(register).toHaveBeenCalledTimes(2);
     expect(warnSpy).toHaveBeenCalledWith(
@@ -263,7 +269,7 @@ describe("team coordinator platform readiness", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns a validated discord client without exploratory probes", async () => {
+  it("returns a validated discord client without exploratory probes", () => {
     const fetchSpy = vi.fn();
     const runtime = {
       getService: vi
@@ -271,7 +277,7 @@ describe("team coordinator platform readiness", () => {
         .mockReturnValue({ client: { users: { fetch: fetchSpy } } }),
     } as unknown as IAgentRuntime;
 
-    const result = await getDiscordClient(runtime);
+    const result = getDiscordClient(runtime);
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected discord client");
@@ -279,26 +285,83 @@ describe("team coordinator platform readiness", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("returns a consistent failure when telegram bot is unavailable", async () => {
+  it("returns a consistent failure when telegram bot is unavailable", () => {
     const runtime = {
       getService: vi.fn().mockReturnValue(undefined),
     } as unknown as IAgentRuntime;
 
-    const result = await getTelegramBot(runtime);
+    const result = getTelegramBot(runtime);
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected telegram failure");
     expect(result.error).toContain("Telegram");
   });
 
-  it("throws the shared Discord availability error through the platform requirement helper", async () => {
+  it("throws the shared Discord availability error through the platform requirement helper", () => {
     const runtime = {
       getService: vi.fn().mockReturnValue(undefined),
     } as unknown as IAgentRuntime;
 
-    await expect(requireDiscordClient(runtime)).rejects.toThrow(
+    expect(() => requireDiscordClient(runtime)).toThrow(
       "Discord service not found",
     );
+  });
+
+  it("checks tracker platform readiness without awaiting synchronous helper results", async () => {
+    vi.resetModules();
+    vi.spyOn(logger, "info").mockImplementation(() => undefined);
+    vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+
+    const discordResult = {
+      ok: false as const,
+      error: "Discord service not found",
+    };
+    const telegramResult = {
+      ok: false as const,
+      error: "Telegram service not found",
+    };
+
+    Object.defineProperty(discordResult, "then", {
+      get() {
+        throw new Error("discord readiness result was awaited");
+      },
+    });
+    Object.defineProperty(telegramResult, "then", {
+      get() {
+        throw new Error("telegram readiness result was awaited");
+      },
+    });
+
+    const getDiscordClientMock = vi.fn(() => discordResult);
+    const getTelegramBotMock = vi.fn(() => telegramResult);
+
+    vi.doMock("./platform", async () => {
+      const actual =
+        await vi.importActual<typeof import("./platform")>("./platform");
+      return {
+        ...actual,
+        getDiscordClient: getDiscordClientMock,
+        getTelegramBot: getTelegramBotMock,
+      };
+    });
+
+    try {
+      const { TeamUpdateTrackerService: FreshTeamUpdateTrackerService } =
+        await import("./services/updateTracker");
+      const runtime = {
+        getService: vi.fn().mockReturnValue(undefined),
+      } as unknown as IAgentRuntime;
+
+      await expect(
+        new FreshTeamUpdateTrackerService(runtime).checkInServiceJob(),
+      ).resolves.toBeUndefined();
+
+      expect(getDiscordClientMock).toHaveBeenCalledWith(runtime);
+      expect(getTelegramBotMock).toHaveBeenCalledWith(runtime);
+    } finally {
+      vi.doUnmock("./platform");
+      vi.resetModules();
+    }
   });
 });
 
@@ -368,6 +431,52 @@ describe("team coordinator shared storage", () => {
     });
   });
 
+  it("ignores malformed team member config payloads when finding a server match", async () => {
+    const runtime = {
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          id: "memory-bad",
+          content: {
+            type: "store-team-members-memory",
+            config: "invalid-config",
+          },
+        },
+        {
+          id: "memory-good",
+          content: {
+            type: "store-team-members-memory",
+            config: {
+              serverId: "server-123",
+              teamMembers: [{ discordName: "@alice" }],
+            },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const memory = await getTeamMembersConfigMemory(runtime, "server-123");
+
+    expect(memory?.id).toBe("memory-good");
+  });
+
+  it("preserves legacy team member fallback when config payloads are unreadable", async () => {
+    const runtime = {
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          id: "memory-legacy",
+          content: {
+            type: "store-team-members-memory",
+            config: "invalid-config",
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const memory = await getTeamMembersConfigMemory(runtime, "server-123");
+
+    expect(memory?.id).toBe("memory-legacy");
+  });
+
   it("filters report channel configs and schedules by expected record type", () => {
     const reportConfig = findReportChannelConfigForServer(
       [
@@ -401,6 +510,29 @@ describe("team coordinator shared storage", () => {
     expect(schedules).toHaveLength(1);
     if (!schedules[0]?.content) throw new Error("expected schedule content");
     expect(schedules[0].content.schedule).toEqual({
+      scheduleId: "schedule-1",
+      serverId: "server-123",
+    });
+  });
+
+  it("ignores malformed schedule payloads when filtering check-in schedules", () => {
+    const schedules = filterCheckInScheduleMemories([
+      {
+        content: {
+          type: "team-member-checkin-schedule",
+          schedule: "invalid-schedule",
+        },
+      },
+      {
+        content: {
+          type: "team-member-checkin-schedule",
+          schedule: { scheduleId: "schedule-1", serverId: "server-123" },
+        },
+      },
+    ] as any);
+
+    expect(schedules).toHaveLength(1);
+    expect(schedules[0]?.content?.schedule).toEqual({
       scheduleId: "schedule-1",
       serverId: "server-123",
     });

@@ -10,6 +10,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { toErrorMessage } from "../logging";
+import {
+  type CoordinatorRecord,
+  getCoordinatorArray,
+  getCoordinatorConfig,
+  isCoordinatorRecord,
+} from "../storage";
 
 interface TeamMember {
   section: string;
@@ -20,6 +26,17 @@ interface TeamMember {
   serverName?: string;
   createdAt?: string;
   updatesFormat?: string[];
+}
+
+function isStoredTeamMember(value: unknown): value is TeamMember {
+  return isCoordinatorRecord(value);
+}
+
+function getStoredTeamMembers(
+  config: CoordinatorRecord | undefined,
+): TeamMember[] {
+  const teamMembers = getCoordinatorArray(config, "teamMembers");
+  return teamMembers?.filter(isStoredTeamMember) ?? [];
 }
 
 /**
@@ -143,29 +160,19 @@ export const listTeamMembersAction: Action = {
         (memory) => memory.content?.type === "store-team-members-memory",
       );
 
-      if (!teamMembersConfig || !teamMembersConfig.content?.config) {
+      const configData = getCoordinatorConfig(teamMembersConfig as any);
+      const teamMembers = getStoredTeamMembers(configData);
+
+      if (!teamMembersConfig || teamMembers.length === 0) {
         logger.info("No team members found for this server");
         await callback({
           text: "📋 No team members have been registered yet for this server.",
         });
         return { success: true };
       }
-
-      // Extract and format team members
-      const configData = teamMembersConfig.content.config as {
-        teamMembers: TeamMember[];
-      };
-      const teamMembers = configData.teamMembers || [];
       logger.info(
         `Found ${teamMembers.length} team members for server ${serverId}`,
       );
-
-      if (teamMembers.length === 0) {
-        await callback({
-          text: "📋 No team members have been registered yet for this server.",
-        });
-        return { success: true };
-      }
 
       // Group team members by section
       const sectionMap = new Map<string, TeamMember[]>();

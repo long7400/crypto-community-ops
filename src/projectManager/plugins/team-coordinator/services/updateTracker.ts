@@ -22,9 +22,17 @@ import { toErrorMessage } from "../logging";
 import { getDiscordClient, getTelegramBot } from "../platform";
 import {
   type CoordinatorMemory,
+  type CoordinatorRecord,
   filterCheckInScheduleMemories,
   getCheckInSchedulesRoomId,
+  getCoordinatorArray,
+  getCoordinatorConfig,
+  getCoordinatorMemoryId,
+  getCoordinatorRoomId,
+  getCoordinatorSchedule,
+  getCoordinatorString,
   getTeamMembersConfigMemory,
+  isCoordinatorRecord,
 } from "../storage";
 
 // Define interfaces for custom services
@@ -39,6 +47,25 @@ interface ITelegramService extends Service {
 // Extended CheckInSchedule with lastUpdated property
 interface ExtendedCheckInSchedule extends CheckInSchedule {
   lastUpdated?: number;
+}
+
+interface StoredTeamMember {
+  section: string;
+  tgName?: string;
+  discordName?: string;
+  updatesFormat?: string[];
+  serverId: string;
+}
+
+function isStoredTeamMember(value: unknown): value is StoredTeamMember {
+  return isCoordinatorRecord(value);
+}
+
+function getStoredTeamMembers(
+  config: CoordinatorRecord | undefined,
+): StoredTeamMember[] {
+  const teamMembers = getCoordinatorArray(config, "teamMembers");
+  return teamMembers?.filter(isStoredTeamMember) ?? [];
 }
 
 export class TeamUpdateTrackerService extends Service {
@@ -66,8 +93,8 @@ export class TeamUpdateTrackerService extends Service {
   async start(): Promise<void> {
     logger.info("Starting Discord Channel Service");
     try {
-      const discordResult = await getDiscordClient(this.runtime);
-      const telegramResult = await getTelegramBot(this.runtime);
+      const discordResult = getDiscordClient(this.runtime);
+      const telegramResult = getTelegramBot(this.runtime);
 
       if (discordResult.ok) {
         logger.info("Discord service found, client available");
@@ -97,9 +124,9 @@ export class TeamUpdateTrackerService extends Service {
 
   private setupDiscordRetry() {
     logger.info("Setting up retry for Discord service connection");
-    const intervalId = setInterval(async () => {
+    const intervalId = setInterval(() => {
       try {
-        const discordResult = await getDiscordClient(this.runtime);
+        const discordResult = getDiscordClient(this.runtime);
         if (discordResult.ok) {
           logger.info("Discord service now available, connecting client");
           this.client = discordResult.client as Client;
@@ -118,9 +145,9 @@ export class TeamUpdateTrackerService extends Service {
 
   private setupTelegramRetry() {
     logger.info("Setting up retry for Telegram service connection");
-    const intervalId = setInterval(async () => {
+    const intervalId = setInterval(() => {
       try {
-        const telegramResult = await getTelegramBot(this.runtime);
+        const telegramResult = getTelegramBot(this.runtime);
         if (telegramResult.ok) {
           logger.info("Telegram service now available, connecting bot");
           this.telegramBot = telegramResult.client;
@@ -350,14 +377,15 @@ export class TeamUpdateTrackerService extends Service {
         }>;
       }
 
-      if (!teamMembersConfig || !teamMembersConfig.content?.config) {
+      const config = getCoordinatorConfig(teamMembersConfig);
+
+      if (!teamMembersConfig) {
         logger.info("No team members found for this server");
         return [];
       }
 
       // Extract team members
-      const config = teamMembersConfig.content.config as TeamMembersConfig;
-      const teamMembers = config.teamMembers || [];
+      const teamMembers = getStoredTeamMembers(config);
 
       logger.info(
         `Found ${teamMembers.length} team members for server ${serverId}`,
@@ -405,8 +433,8 @@ export class TeamUpdateTrackerService extends Service {
     this.isJobRunning = true;
     try {
       logger.info("Running check-in service job");
-      const discordResult = await getDiscordClient(this.runtime);
-      const telegramResult = await getTelegramBot(this.runtime);
+      const discordResult = getDiscordClient(this.runtime);
+      const telegramResult = getTelegramBot(this.runtime);
 
       if (discordResult.ok) {
         logger.info("Discord service now available, connecting client");
@@ -764,17 +792,26 @@ export class TeamUpdateTrackerService extends Service {
                   const scheduleMemory = filterCheckInScheduleMemories(
                     memories as CoordinatorMemory[],
                   ).find((memory) => {
-                    if (!memory?.content?.schedule) return false;
-
-                    const memSchedule = memory.content
-                      .schedule as ExtendedCheckInSchedule;
-                    return memSchedule.scheduleId === schedule.scheduleId;
+                    const memSchedule = getCoordinatorSchedule(memory);
+                    return (
+                      getCoordinatorString(memSchedule, "scheduleId") ===
+                      schedule.scheduleId
+                    );
                   });
 
-                  if (scheduleMemory && scheduleMemory.id) {
+                  const scheduleMemoryId =
+                    getCoordinatorMemoryId(scheduleMemory);
+                  const scheduleMemoryRoomId =
+                    getCoordinatorRoomId(scheduleMemory);
+
+                  if (
+                    scheduleMemory &&
+                    scheduleMemoryId &&
+                    scheduleMemoryRoomId
+                  ) {
                     // Update the last updated date
                     const scheduleContent =
-                      scheduleMemory.content?.schedule || {};
+                      getCoordinatorSchedule(scheduleMemory) || {};
                     const updatedSchedule = {
                       ...scheduleContent,
                       lastUpdated: Date.now(),
@@ -783,10 +820,10 @@ export class TeamUpdateTrackerService extends Service {
                     // Update the memory with the new schedule
                     const updatedMemory: Partial<Memory> & { id: UUID } = {
                       ...(scheduleMemory as Partial<Memory>),
-                      id: scheduleMemory.id as UUID,
-                      roomId: scheduleMemory.roomId as UUID,
+                      id: scheduleMemoryId,
+                      roomId: scheduleMemoryRoomId,
                       content: {
-                        ...(scheduleMemory.content as Memory["content"]),
+                        ...(scheduleMemory.content ?? {}),
                         schedule: updatedSchedule,
                       },
                     };

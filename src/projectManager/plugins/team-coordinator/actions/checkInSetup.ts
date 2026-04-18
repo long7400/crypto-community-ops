@@ -131,9 +131,7 @@ export const checkInFormatAction: Action = {
 
       try {
         discordService = {
-          client: (await requireDiscordClient(
-            runtime,
-          )) as DiscordService["client"],
+          client: requireDiscordClient(runtime) as DiscordService["client"],
         } as DiscordService;
         logger.info("Successfully retrieved Discord service with client");
       } catch (error: unknown) {

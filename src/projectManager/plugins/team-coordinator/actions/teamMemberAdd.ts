@@ -13,9 +13,15 @@ import {
 } from "@elizaos/core";
 import { stringifyForLog, toErrorMessage } from "../logging";
 import {
+  type CoordinatorRecord,
   ensureCoordinatorRoom,
+  getCoordinatorArray,
+  getCoordinatorConfig,
+  getCoordinatorMemoryId,
+  getCoordinatorRoomId,
   getTeamMembersConfigMemory,
   getTeamMembersRoomId,
+  isCoordinatorRecord,
 } from "../storage";
 
 interface TeamMember {
@@ -33,6 +39,17 @@ interface TeamMemberConfig {
   teamMembers: TeamMember[];
   lastUpdated: number;
   serverId: string;
+}
+
+function isStoredTeamMember(value: unknown): value is TeamMember {
+  return isCoordinatorRecord(value);
+}
+
+function getStoredTeamMembers(
+  config: CoordinatorRecord | undefined,
+): TeamMember[] {
+  const teamMembers = getCoordinatorArray(config, "teamMembers");
+  return teamMembers?.filter(isStoredTeamMember) ?? [];
 }
 
 /**
@@ -53,10 +70,9 @@ async function fetchTeamMembersForServer(
       `store-team-members-${serverId.replace(/[^a-zA-Z0-9]/g, "")}`,
     );
     const existingConfig = await getTeamMembersConfigMemory(runtime, serverId);
-    const teamMembers =
-      (existingConfig?.content?.config?.teamMembers as
-        | TeamMember[]
-        | undefined) || [];
+    const teamMembers = getStoredTeamMembers(
+      getCoordinatorConfig(existingConfig),
+    );
 
     // Log for debugging
     logger.info(
@@ -427,8 +443,8 @@ export const addTeamMemberAction: Action = {
           );
 
           // Fetch existing team members from the config
-          const configData = existingConfig.content?.config as TeamMemberConfig;
-          const existingTeamMembers = configData?.teamMembers || [];
+          const configData = getCoordinatorConfig(existingConfig);
+          const existingTeamMembers = getStoredTeamMembers(configData);
           logger.info(
             `Found ${existingTeamMembers.length} existing team members`,
           );
@@ -483,22 +499,29 @@ export const addTeamMemberAction: Action = {
 
             // Update the config with the new team members
             const updatedConfig = {
-              ...(existingConfig.content?.config as TeamMemberConfig),
+              ...(configData ?? {}),
               teamMembers: updatedTeamMembers,
               lastUpdated: Date.now(),
             };
 
             // Update the memory with the new config
-            if (existingConfig.id) {
+            const existingConfigId = getCoordinatorMemoryId(existingConfig);
+            const existingConfigRoomId = getCoordinatorRoomId(existingConfig);
+
+            if (existingConfigId && existingConfigRoomId) {
               await runtime.updateMemory({
                 ...(existingConfig as Partial<Memory>),
-                id: existingConfig.id as UUID,
-                roomId: existingConfig.roomId as UUID,
+                id: existingConfigId,
+                roomId: existingConfigRoomId,
                 content: {
-                  ...existingConfig.content,
+                  ...(existingConfig.content ?? {}),
                   config: updatedConfig,
                 },
               });
+            } else {
+              logger.warn(
+                "Existing team members config is missing id or roomId; skipping memory update",
+              );
             }
 
             logger.info(
@@ -561,13 +584,14 @@ export const addTeamMemberAction: Action = {
           tableName: "messages",
         });
 
-        const updatedConfig = updatedMemories.find(
-          (memory) => memory.content.type === "store-team-members-memory",
+        const updatedConfigMemory = updatedMemories.find(
+          (memory) => memory.content?.type === "store-team-members-memory",
         );
 
-        if (updatedConfig && updatedConfig.content.config) {
-          const configData = updatedConfig.content.config as TeamMemberConfig;
-          const allTeamMembers = configData.teamMembers || [];
+        if (updatedConfigMemory) {
+          const allTeamMembers = getStoredTeamMembers(
+            getCoordinatorConfig(updatedConfigMemory as any),
+          );
           logger.info(
             `Retrieved ${allTeamMembers.length} total team members for response`,
           );

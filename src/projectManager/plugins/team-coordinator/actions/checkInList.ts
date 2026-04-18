@@ -12,6 +12,15 @@ import {
 } from "@elizaos/core";
 import type { CheckInSchedule } from "../../../types";
 import { stringifyForLog, toErrorMessage } from "../logging";
+import { isCoordinatorRecord } from "../storage";
+
+function isStoredCheckInSchedule(value: unknown): value is CheckInSchedule {
+  return (
+    isCoordinatorRecord(value) &&
+    typeof value.scheduleId === "string" &&
+    typeof value.serverId === "string"
+  );
+}
 
 export async function fetchCheckInSchedules(
   runtime: IAgentRuntime,
@@ -55,7 +64,7 @@ export async function fetchCheckInSchedules(
       .filter((memory) => {
         const isValidType =
           memory?.content?.type === "team-member-checkin-schedule";
-        const hasSchedule = !!memory?.content?.schedule;
+        const hasSchedule = isStoredCheckInSchedule(memory?.content?.schedule);
         logger.info(
           `Memory ${memory.id} validation: ${stringifyForLog({
             isValidType,
@@ -66,14 +75,18 @@ export async function fetchCheckInSchedules(
         return isValidType && hasSchedule;
       })
       .map((memory) => {
-        const schedule = memory.content?.schedule as CheckInSchedule;
+        const schedule = memory.content?.schedule;
         logger.info(
           `Processing schedule from memory ${memory.id}: ${stringifyForLog({
-            scheduleId: schedule?.scheduleId,
-            frequency: schedule?.frequency,
+            scheduleId: isStoredCheckInSchedule(schedule)
+              ? schedule.scheduleId
+              : undefined,
+            frequency: isStoredCheckInSchedule(schedule)
+              ? schedule.frequency
+              : undefined,
           })}`,
         );
-        return schedule;
+        return isStoredCheckInSchedule(schedule) ? schedule : undefined;
       })
       .filter((schedule): schedule is CheckInSchedule => {
         const isValid = schedule !== undefined;

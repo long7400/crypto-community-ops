@@ -10,10 +10,64 @@ export type CoordinatorMemory = {
   roomId?: UUID | string;
   content?: {
     type?: string;
-    config?: Record<string, any>;
-    schedule?: Record<string, any>;
+    config?: unknown;
+    schedule?: unknown;
   };
 };
+
+export type CoordinatorRecord = Record<string, unknown>;
+
+export function isCoordinatorRecord(
+  value: unknown,
+): value is CoordinatorRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+export function getCoordinatorConfig(
+  memory: CoordinatorMemory | undefined,
+): CoordinatorRecord | undefined {
+  return isCoordinatorRecord(memory?.content?.config)
+    ? memory.content.config
+    : undefined;
+}
+
+export function getCoordinatorSchedule(
+  memory: CoordinatorMemory | undefined,
+): CoordinatorRecord | undefined {
+  return isCoordinatorRecord(memory?.content?.schedule)
+    ? memory.content.schedule
+    : undefined;
+}
+
+export function getCoordinatorString(
+  record: CoordinatorRecord | undefined,
+  key: string,
+): string | undefined {
+  const value = record?.[key];
+  return typeof value === "string" ? value : undefined;
+}
+
+export function getCoordinatorArray(
+  record: CoordinatorRecord | undefined,
+  key: string,
+): unknown[] | undefined {
+  const value = record?.[key];
+  return Array.isArray(value) ? value : undefined;
+}
+
+export function getCoordinatorMemoryId(
+  memory: CoordinatorMemory | undefined,
+): UUID | undefined {
+  return typeof memory?.id === "string" ? (memory.id as UUID) : undefined;
+}
+
+export function getCoordinatorRoomId(
+  memory: CoordinatorMemory | undefined,
+): UUID | undefined {
+  return typeof memory?.roomId === "string"
+    ? (memory.roomId as UUID)
+    : undefined;
+}
 
 export function sanitizeServerId(serverId: string): string {
   return serverId.replace(/[^a-zA-Z0-9]/g, "");
@@ -60,11 +114,22 @@ export async function getTeamMembersConfigMemory(
     tableName: "messages",
   })) as CoordinatorMemory[];
 
-  return memories.find((memory) => {
-    if (memory.content?.type !== "store-team-members-memory") return false;
-    const configServerId = memory.content?.config?.serverId;
-    return !configServerId || configServerId === serverId;
-  });
+  const matchingConfig = memories.find(
+    (memory) =>
+      memory.content?.type === "store-team-members-memory" &&
+      getCoordinatorString(getCoordinatorConfig(memory), "serverId") ===
+        serverId,
+  );
+
+  if (matchingConfig) {
+    return matchingConfig;
+  }
+
+  return memories.find(
+    (memory) =>
+      memory.content?.type === "store-team-members-memory" &&
+      !getCoordinatorString(getCoordinatorConfig(memory), "serverId"),
+  );
 }
 
 export async function getReportChannelConfigMemory(
@@ -97,7 +162,8 @@ export function findReportChannelConfigForServer(
   const matchingConfig = memories.find(
     (memory) =>
       memory.content?.type === "report-channel-config" &&
-      memory.content?.config?.serverId === serverId,
+      getCoordinatorString(getCoordinatorConfig(memory), "serverId") ===
+        serverId,
   );
 
   if (matchingConfig) {
@@ -107,7 +173,7 @@ export function findReportChannelConfigForServer(
   return memories.find(
     (memory) =>
       memory.content?.type === "report-channel-config" &&
-      !memory.content?.config?.serverId,
+      !getCoordinatorString(getCoordinatorConfig(memory), "serverId"),
   );
 }
 
@@ -117,6 +183,6 @@ export function filterCheckInScheduleMemories(
   return memories.filter(
     (memory) =>
       memory.content?.type === "team-member-checkin-schedule" &&
-      !!memory.content?.schedule,
+      !!getCoordinatorSchedule(memory),
   );
 }

@@ -10,6 +10,12 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { stringifyForLog, toErrorMessage } from "../logging";
+import {
+  type CoordinatorRecord,
+  getCoordinatorArray,
+  getCoordinatorConfig,
+  isCoordinatorRecord,
+} from "../storage";
 
 interface EntityPlatformMetadata {
   metadata?: {
@@ -32,6 +38,17 @@ interface TeamMember {
   serverName?: string;
   createdAt?: string;
   updatesFormat?: string[];
+}
+
+function isStoredTeamMember(value: unknown): value is TeamMember {
+  return isCoordinatorRecord(value);
+}
+
+function getStoredTeamMembers(
+  config: CoordinatorRecord | undefined,
+): TeamMember[] {
+  const teamMembers = getCoordinatorArray(config, "teamMembers");
+  return teamMembers?.filter(isStoredTeamMember) ?? [];
 }
 
 /**
@@ -147,11 +164,11 @@ export const updatesFormatAction: Action = {
 
       // Extract all team members from all configs
       teamMemberConfigs.forEach((config) => {
-        if (config.content?.config) {
-          const configData = config.content.config as {
-            teamMembers: TeamMember[];
-          };
-          const teamMembers = configData.teamMembers || [];
+        const teamMembers = getStoredTeamMembers(
+          getCoordinatorConfig(config as any),
+        );
+
+        if (teamMembers.length > 0) {
           logger.info(`Found ${teamMembers.length} team members in config`);
           allTeamMembers = [...allTeamMembers, ...teamMembers];
         }

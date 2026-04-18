@@ -30,9 +30,9 @@ type ReadinessResult<T> =
   | { ok: true; client: T }
   | { ok: false; error: string };
 
-export async function getDiscordClient(
+export function getDiscordClient(
   runtime: IAgentRuntime,
-): Promise<ReadinessResult<DiscordClientLike>> {
+): ReadinessResult<DiscordClientLike> {
   const discordService = runtime.getService("discord") as
     | DiscordServiceLike
     | undefined;
@@ -48,10 +48,10 @@ export async function getDiscordClient(
   return { ok: true, client: discordService.client };
 }
 
-export async function requireDiscordClient(
+export function requireDiscordClient(
   runtime: IAgentRuntime,
-): Promise<DiscordClientLike> {
-  const result = await getDiscordClient(runtime);
+): DiscordClientLike {
+  const result = getDiscordClient(runtime);
   if (!result.ok) {
     throw new Error(result.error);
   }
@@ -59,9 +59,9 @@ export async function requireDiscordClient(
   return result.client;
 }
 
-export async function getTelegramBot(
+export function getTelegramBot(
   runtime: IAgentRuntime,
-): Promise<ReadinessResult<TelegramBotLike>> {
+): ReadinessResult<TelegramBotLike> {
   const telegramService = runtime.getService("telegram") as
     | TelegramServiceLike
     | undefined;
