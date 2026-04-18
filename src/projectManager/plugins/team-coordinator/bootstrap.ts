@@ -2,6 +2,9 @@ import { type IAgentRuntime, logger } from "@elizaos/core";
 import { toErrorMessage } from "./logging";
 import { registerTasks as defaultRegisterTasks } from "./tasks";
 
+const TEAM_COORDINATOR_TASK_REGISTRATION_FAILED =
+  "TEAM_COORDINATOR_TASK_REGISTRATION_FAILED";
+
 export async function registerTasksWithRetry(
   runtime: IAgentRuntime,
   registerTasks: (
@@ -37,7 +40,7 @@ export async function registerTasksWithRetry(
 
   logger.error(
     tasksApiReady
-      ? "Failed to register team coordinator tasks after all retries"
+      ? `${TEAM_COORDINATOR_TASK_REGISTRATION_FAILED}: Failed to register team coordinator tasks after all retries`
       : "runtime.getTasks never became available; team coordinator tasks were not registered",
   );
 }

@@ -118,7 +118,40 @@ describe("team coordinator bootstrap", () => {
       "Failed to register team coordinator tasks (attempt 2/2): boom",
     );
     expect(errorSpy).toHaveBeenCalledWith(
-      "Failed to register team coordinator tasks after all retries",
+      "TEAM_COORDINATOR_TASK_REGISTRATION_FAILED: Failed to register team coordinator tasks after all retries",
+    );
+  });
+
+  it("emits a searchable bootstrap error code when deferred registration exhausts retries", async () => {
+    const warnSpy = vi
+      .spyOn(logger, "warn")
+      .mockImplementation(() => undefined);
+    const errorSpy = vi
+      .spyOn(logger, "error")
+      .mockImplementation(() => undefined);
+    const runtime = {
+      registerService: vi.fn().mockResolvedValue(undefined),
+      getTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as IAgentRuntime;
+    const register = vi.fn().mockRejectedValue(new Error("boom"));
+
+    await bootstrapTeamCoordinator(runtime, {
+      registerTasks: register,
+      retries: 2,
+      delayMs: 100,
+    });
+
+    await vi.advanceTimersByTimeAsync(100);
+
+    expect(register).toHaveBeenCalledTimes(2);
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to register team coordinator tasks (attempt 1/2): boom",
+    );
+    expect(warnSpy).toHaveBeenCalledWith(
+      "Failed to register team coordinator tasks (attempt 2/2): boom",
+    );
+    expect(errorSpy).toHaveBeenCalledWith(
+      expect.stringContaining("TEAM_COORDINATOR_TASK_REGISTRATION_FAILED"),
     );
   });
 
