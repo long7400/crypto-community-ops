@@ -113,7 +113,7 @@ export async function initializeAllSystems(
   try {
     for (const server of servers) {
       const messageServerId = stringToUuid(server.id);
-      const worldId = createUniqueUuid(runtime, messageServerId);
+      const worldId = createUniqueUuid(runtime, server.id);
       const ownerId = createUniqueUuid(runtime, server.ownerId);
 
       const existingWorld = await runtime.getWorld(worldId);
@@ -256,6 +256,10 @@ export async function startTelegramOnboarding(
   }
 
   const telegramClient = runtime.getService("telegram") as any;
+  if (!telegramClient?.messageManager?.sendMessage) {
+    logger.warn("Telegram service unavailable; skipping onboarding deep link");
+    return;
+  }
   const hasOwnerUsername =
     typeof ownerUsername === "string" && ownerUsername.trim().length > 0;
   const greetingPrompt = hasOwnerUsername
