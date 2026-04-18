@@ -1,17 +1,17 @@
 import {
+  ChannelType,
+  createUniqueUuid,
   type Entity,
   type IAgentRuntime,
+  logger,
   type Memory,
   ModelType,
   Service,
   type UUID,
-  logger,
-  World,
-  createUniqueUuid,
-  ChannelType,
+  type World,
 } from "@elizaos/core";
-import { ServiceType } from "./types";
 import dedent from "dedent";
+import { ServiceType } from "./types";
 
 export class CommunityManagerService extends Service {
   static serviceType = ServiceType.COMMUNITY_MANAGER;
@@ -61,7 +61,7 @@ export class CommunityManagerService extends Service {
 
     if (greetChannel) {
       // Try to get channel by ID
-      let channel = guild.channels.cache.get(greetChannel);
+      const channel = guild.channels.cache.get(greetChannel);
       if (channel?.isTextBased()) return channel.id;
 
       // Try to match by name if not found by ID
@@ -206,7 +206,7 @@ export class CommunityManagerService extends Service {
       return;
     }
     const shouldGreetUser =
-      world.metadata?.settings["SHOULD_GREET_NEW_PERSONS"]?.value;
+      world.metadata?.settings?.["SHOULD_GREET_NEW_PERSONS"]?.value;
 
     if (
       !(
@@ -219,7 +219,7 @@ export class CommunityManagerService extends Service {
     }
 
     const greetingMsgSettings =
-      world.metadata?.settings["GREETING_MESSAGE"]?.value;
+      world.metadata?.settings?.["GREETING_MESSAGE"]?.value;
 
     const userName =
       newMember.first_name +
@@ -260,6 +260,7 @@ export class CommunityManagerService extends Service {
         entityId,
         roomId,
         content: {
+          source: "telegram",
           text: welcomeText,
           actions: ["GREET_NEW_PERSON"],
         },

@@ -1,16 +1,17 @@
 import {
   type Action,
   ChannelType,
+  createUniqueUuid,
   type Evaluator,
   type IAgentRuntime,
+  initializeOnboarding,
+  logger,
   type OnboardingConfig,
   type Provider,
   Role,
+  stringToUuid,
   type UUID,
   type World,
-  createUniqueUuid,
-  initializeOnboarding,
-  logger,
 } from "@elizaos/core";
 
 import type { Guild } from "discord.js";
@@ -58,41 +59,38 @@ export const initCharacter = async ({
   }
 
   // Register runtime events
-  runtime.registerEvent(
-    "DISCORD_WORLD_JOINED",
-    async (params: { server: Guild }) => {
-      // TODO: Save settings config to runtime
-      await initializeAllSystems(runtime, [params.server], config);
-    },
-  );
+  runtime.registerEvent("DISCORD_WORLD_JOINED", async (params) => {
+    const server = (params as { server?: Guild }).server;
+    if (!server) return;
+    // TODO: Save settings config to runtime
+    await initializeAllSystems(runtime, [server], config);
+  });
 
   // when booting up into a server we're in, fire a connected event
-  runtime.registerEvent(
-    "DISCORD_SERVER_CONNECTED",
-    async (params: { server: Guild }) => {
-      await initializeAllSystems(runtime, [params.server], config);
-    },
-  );
+  runtime.registerEvent("DISCORD_SERVER_CONNECTED", async (params) => {
+    const server = (params as { server?: Guild }).server;
+    if (!server) return;
+    await initializeAllSystems(runtime, [server], config);
+  });
 
   // Register runtime events
-  runtime.registerEvent(
-    "TELEGRAM_WORLD_JOINED",
-    async (params: {
-      world: World;
-      entities: any[];
-      chat: any;
-      botUsername: string;
-    }) => {
-      await initializeOnboarding(runtime, params.world, config);
-      await startTelegramOnboarding(
-        runtime,
-        params.world,
-        params.chat,
-        params.entities,
-        params.botUsername,
-      );
-    },
-  );
+  runtime.registerEvent("TELEGRAM_WORLD_JOINED", async (params) => {
+    const { world, entities, chat, botUsername } = params as {
+      world?: World;
+      entities?: any[];
+      chat?: any;
+      botUsername?: string;
+    };
+    if (!world || !chat || !botUsername) return;
+    await initializeOnboarding(runtime, world, config);
+    await startTelegramOnboarding(
+      runtime,
+      world,
+      chat,
+      entities ?? [],
+      botUsername,
+    );
+  });
 };
 
 /**
@@ -114,6 +112,7 @@ export async function initializeAllSystems(
 
   try {
     for (const server of servers) {
+      const messageServerId = stringToUuid(server.id);
       const worldId = createUniqueUuid(runtime, server.id);
       const ownerId = createUniqueUuid(runtime, server.ownerId);
 
@@ -131,7 +130,8 @@ export async function initializeAllSystems(
       const world: World = {
         id: worldId,
         name: server.name,
-        serverId: server.id,
+        messageServerId,
+        serverId: worldId,
         agentId: runtime.agentId,
         metadata: {
           roles: {
@@ -148,7 +148,8 @@ export async function initializeAllSystems(
       console.log("world", world);
     }
   } catch (error) {
-    logger.error("Error initializing systems:", error);
+    const message = error instanceof Error ? error.message : String(error);
+    logger.error(`Error initializing systems: ${message}`);
     throw error;
   }
 }
@@ -188,7 +189,8 @@ export async function startOnboardingDM(
       source: "discord",
       type: ChannelType.DM,
       channelId: msg.channelId,
-      serverId: guild.id,
+      messageServerId: stringToUuid(guild.id),
+      serverId: worldId,
       worldId: worldId,
     });
 
@@ -198,6 +200,7 @@ export async function startOnboardingDM(
       await runtime.createEntity({
         id: runtime.agentId,
         names: [runtime.character.name],
+        metadata: {},
         agentId: runtime.agentId,
       });
     }
@@ -242,25 +245,30 @@ export async function startTelegramOnboarding(
   entities: any[],
   botUsername: string,
 ): Promise<void> {
-  let ownerId = null;
-  let ownerUsername = null;
-
-  entities.forEach((entity) => {
-    if (entity.metadata?.telegram?.adminTitle === "Owner") {
-      ownerId = entity?.metadata?.telegram?.id;
-      ownerUsername = entity?.metadata?.telegram?.username;
-    }
-  });
+  const ownerEntity = entities.find(
+    (entity) => entity.metadata?.telegram?.adminTitle === "Owner",
+  );
+  const ownerId = ownerEntity?.metadata?.telegram?.id ?? null;
+  const ownerUsername = ownerEntity?.metadata?.telegram?.username ?? null;
 
   if (!ownerId) {
     logger.warn("no ownerId found");
   }
 
   const telegramClient = runtime.getService("telegram") as any;
+  if (!telegramClient?.messageManager?.sendMessage) {
+    logger.warn("Telegram service unavailable; skipping onboarding deep link");
+    return;
+  }
+  const hasOwnerUsername =
+    typeof ownerUsername === "string" && ownerUsername.trim().length > 0;
+  const greetingPrompt = hasOwnerUsername
+    ? `Hello @${ownerUsername}! Could we take a few minutes to get everything set up?`
+    : "Hello! Could we take a few minutes to get everything set up?";
 
   // Fallback: send deep link to the group chat
   const onboardingMessageDeepLink = [
-    `Hello @${ownerUsername}! Could we take a few minutes to get everything set up?`,
+    greetingPrompt,
     `Please click this link to start chatting with me: https://t.me/${botUsername}?start=onboarding`,
   ].join(" ");
 

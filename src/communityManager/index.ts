@@ -28,9 +28,14 @@ export const character: Character = {
     "@elizaos/plugin-sql",
     ...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
     ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),
-    ...(!process.env.OPENAI_API_KEY ? ["@elizaos/plugin-local-ai"] : []),
     ...(process.env.OPENROUTER_API_KEY ? ["@elizaos/plugin-openrouter"] : []),
+    ...(!process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY
+      ? ["@elizaos/plugin-local-ai"]
+      : []),
     "@elizaos/plugin-discord",
+    ...(process.env.COMMUNITY_MANAGER_TELEGRAM_BOT_TOKEN
+      ? ["@elizaos/plugin-telegram"]
+      : []),
     "@elizaos/plugin-twitter",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-video-understanding",
@@ -41,6 +46,7 @@ export const character: Character = {
       DISCORD_APPLICATION_ID:
         process.env.COMMUNITY_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.COMMUNITY_MANAGER_DISCORD_API_TOKEN,
+      TELEGRAM_BOT_TOKEN: process.env.COMMUNITY_MANAGER_TELEGRAM_BOT_TOKEN,
     },
     avatar: "https://elizaos.github.io/eliza-avatars/Eli5/portrait.jpg",
   },
@@ -394,7 +400,7 @@ const config: OnboardingConfig = {
       required: true,
       public: true,
       secret: false,
-      validation: (value: boolean) => typeof value === "boolean",
+      validation: (value) => typeof value === "boolean",
     },
     GREETING_CHANNEL: {
       name: "Greeting Channel",
@@ -405,8 +411,10 @@ const config: OnboardingConfig = {
       secret: false,
       usageDescription: "The channel to use for greeting new users",
       dependsOn: ["SHOULD_GREET_NEW_PERSONS"],
-      onSetAction: (value: string) => {
-        return `I will now greet new users in ${value}`;
+      onSetAction: (value) => {
+        return typeof value === "string"
+          ? `I will now greet new users in ${value}`
+          : "I will now greet new users in the configured channel";
       },
     },
     GREETING_MESSAGE: {
@@ -419,10 +427,12 @@ const config: OnboardingConfig = {
       public: false,
       secret: false,
       dependsOn: ["SHOULD_GREET_NEW_PERSONS"],
-      validation: (value: string) =>
+      validation: (value) =>
         typeof value === "string" && value.trim().length > 0,
-      onSetAction: (value: string) => {
-        return `Got it! I'll use this message to greet new users: "${value}"`;
+      onSetAction: (value) => {
+        return typeof value === "string"
+          ? `Got it! I'll use this message to greet new users: "${value}"`
+          : "Got it! I'll use the configured greeting message for new users.";
       },
     },
   },

@@ -1,13 +1,15 @@
 import {
   type Action,
+  type ActionResult,
+  createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
+  logger,
   type Memory,
   type State,
-  createUniqueUuid,
   type UUID,
-  logger,
 } from "@elizaos/core";
+import { toErrorMessage } from "../logging";
 
 interface TeamMember {
   section: string;
@@ -73,7 +75,9 @@ export const listTeamMembersAction: Action = {
       return true;
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error("Error in listTeamMembersAction validation:", err);
+      logger.error(
+        `Error in listTeamMembersAction validation: ${toErrorMessage(error)}`,
+      );
       logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
       return false;
     }
@@ -84,15 +88,17 @@ export const listTeamMembersAction: Action = {
     state: State | undefined,
     options: Record<string, unknown> = {},
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info("=== LIST-TEAM-MEMBERS HANDLER START ===");
 
-      if (!state) return false;
+      if (!state) {
+        return { success: false, error: "Missing state for team members list" };
+      }
 
       if (!callback) {
         logger.warn("No callback function provided");
-        return false;
+        return { success: false, error: "No callback function provided" };
       }
 
       // Get server ID from state
@@ -101,13 +107,10 @@ export const listTeamMembersAction: Action = {
 
       if (!serverId) {
         logger.error("No server ID found in state");
-        await callback(
-          {
-            text: "❌ Failed to identify the server. Please try again.",
-          },
-          [],
-        );
-        return false;
+        await callback({
+          text: "❌ Failed to identify the server. Please try again.",
+        });
+        return { success: false, error: "No server ID found in state" };
       }
 
       logger.info(
@@ -142,13 +145,10 @@ export const listTeamMembersAction: Action = {
 
       if (!teamMembersConfig || !teamMembersConfig.content?.config) {
         logger.info("No team members found for this server");
-        await callback(
-          {
-            text: "📋 No team members have been registered yet for this server.",
-          },
-          [],
-        );
-        return true;
+        await callback({
+          text: "📋 No team members have been registered yet for this server.",
+        });
+        return { success: true };
       }
 
       // Extract and format team members
@@ -161,13 +161,10 @@ export const listTeamMembersAction: Action = {
       );
 
       if (teamMembers.length === 0) {
-        await callback(
-          {
-            text: "📋 No team members have been registered yet for this server.",
-          },
-          [],
-        );
-        return true;
+        await callback({
+          text: "📋 No team members have been registered yet for this server.",
+        });
+        return { success: true };
       }
 
       // Group team members by section
@@ -206,30 +203,24 @@ export const listTeamMembersAction: Action = {
       responseText = responseText + formattedMembers;
 
       // Send the response
-      await callback(
-        {
-          text: responseText.trim(),
-        },
-        [],
-      );
+      await callback({
+        text: responseText.trim(),
+      });
 
       logger.info("=== LIST-TEAM-MEMBERS HANDLER END ===");
-      return true;
+      return { success: true };
     } catch (error: unknown) {
       const err = error as Error;
       logger.error("=== LIST-TEAM-MEMBERS HANDLER ERROR ===");
-      logger.error(`Error listing team members: ${err}`);
+      logger.error(`Error listing team members: ${toErrorMessage(error)}`);
       logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
 
       if (callback) {
-        await callback(
-          {
-            text: "❌ An unexpected error occurred while retrieving team members. Please try again later.",
-          },
-          [],
-        );
+        await callback({
+          text: "❌ An unexpected error occurred while retrieving team members. Please try again later.",
+        });
       }
-      return false;
+      return { success: false, error: toErrorMessage(error) };
     }
   },
   examples: [

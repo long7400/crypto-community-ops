@@ -1,22 +1,25 @@
 import {
   type Action,
+  type ActionResult,
   ChannelType,
   type Content,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  type State,
   composePromptFromState,
   createUniqueUuid,
   getUserServerRole,
   getWorldSettings,
+  type HandlerCallback,
+  type IAgentRuntime,
   logger,
-  type UUID,
+  type Memory,
+  ModelType,
   type Service,
+  type State,
+  type UUID,
 } from "@elizaos/core";
-import { sendCheckInScheduleForm } from "../forms/scheduleForm";
 import { sendCheckInReportForm } from "../forms/checkInForm";
+import { sendCheckInScheduleForm } from "../forms/scheduleForm";
+import { stringifyForLog, toErrorMessage } from "../logging";
+import { requireDiscordClient } from "../platform";
 
 interface DiscordComponentInteraction {
   customId: string;
@@ -39,90 +42,6 @@ interface TextChannel {
   id: string;
   name: string;
   type: string;
-}
-
-// Required Discord configuration fields
-const REQUIRED_DISCORD_FIELDS = [
-  "PROJECT_MANAGER_DISCORD_APPLICATION_ID",
-  "PROJECT_MANAGER_DISCORD_API_TOKEN",
-];
-
-/**
- * Validates the Discord configuration for a specific server.
- * @param {IAgentRuntime} runtime - The Agent runtime.
- * @param {string} serverId - The ID of the server to validate.
- * @returns {Promise<{ isValid: boolean; error?: string }>}
- */
-async function validateDiscordConfig(
-  runtime: IAgentRuntime,
-  serverId: string,
-): Promise<{ isValid: boolean; error?: string }> {
-  try {
-    // logger.info(`Validating Discord config for server ${serverId}`);
-    // const worldSettings = await getWorldSettings(runtime, serverId);
-
-    // // Check required fields
-    // for (const field of REQUIRED_DISCORD_FIELDS) {
-    //   if (!worldSettings[field] || worldSettings[field].value === null) {
-    //     return {
-    //       isValid: false,
-    //       error: `Missing required Discord configuration: ${field}`,
-    //     };
-    //   }
-    // }
-
-    return { isValid: true };
-  } catch (error: unknown) {
-    const err = error as Error;
-    logger.error("Error validating Discord config:", err);
-    return {
-      isValid: false,
-      error: "Error validating Discord configuration",
-    };
-  }
-}
-
-/**
- * Ensures a Discord client exists and is ready
- * @param {IAgentRuntime} runtime - The Agent runtime
- * @returns {Promise<any>} The Discord client
- */
-async function ensureDiscordClient(
-  runtime: IAgentRuntime,
-): Promise<DiscordService> {
-  logger.info("Ensuring Discord client is available");
-
-  try {
-    const discordService = runtime.getService("discord") as DiscordService;
-    logger.info(`Discord service found: ${!!discordService}`);
-
-    if (!discordService) {
-      logger.error("Discord service not found in runtime");
-      throw new Error("Discord service not found");
-    }
-
-    // Log what's in the service to see its structure
-    logger.info(
-      `Discord service structure: ${JSON.stringify(Object.keys(discordService))}`,
-    );
-
-    // Check if client exists and is ready
-    logger.info(`Discord client exists: ${!!discordService?.client}`);
-    if (!discordService?.client) {
-      logger.error("Discord client not initialized in service");
-      throw new Error("Discord client not initialized");
-    }
-
-    logger.info("Discord client successfully validated");
-    return discordService;
-  } catch (error: unknown) {
-    const err = error as Error;
-    logger.error(
-      `Error ensuring Discord client: ${err.message || "Unknown error"}`,
-    );
-    logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
-    throw error;
-  }
 }
 
 export const checkInFormatAction: Action = {
@@ -184,19 +103,13 @@ export const checkInFormatAction: Action = {
         `User ${message.entityId} has admin privileges with role: ${userRole}`,
       );
       state.data.isAdmin = true;
-      // // Validate Discord configuration
-      // const validation = await validateDiscordConfig(runtime, serverId);
-      // if (!validation.isValid) {
-      //   logger.error(`Discord validation failed: ${validation.error}`);
-      //   return false;
-      // }
-
       // Ensure Discord client is available
 
       return true;
     } catch (error: unknown) {
-      const err = error as Error;
-      logger.error("Error in checkInFormatAction validation:", err);
+      logger.error(
+        `Error in checkInFormatAction validation: ${toErrorMessage(error)}`,
+      );
       return false;
     }
   },
@@ -206,16 +119,22 @@ export const checkInFormatAction: Action = {
     state: State | undefined,
     options: Record<string, unknown> = {},
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     try {
-      if (!state) return false;
+      if (!state) {
+        return { success: false, error: "Missing state for check-in setup" };
+      }
 
       // Get Discord client first
       logger.info("Attempting to get Discord client...");
       let discordService: DiscordService;
 
       try {
-        discordService = await ensureDiscordClient(runtime);
+        discordService = {
+          client: (await requireDiscordClient(
+            runtime,
+          )) as DiscordService["client"],
+        } as DiscordService;
         logger.info("Successfully retrieved Discord service with client");
       } catch (error: unknown) {
         const discordError = error as Error;
@@ -225,15 +144,15 @@ export const checkInFormatAction: Action = {
 
         // Try to proceed anyway or handle gracefully
         if (callback) {
-          await callback(
-            {
-              text: "❌ Unable to connect to Discord services. Please try again later or contact support.",
-              source: "discord",
-            },
-            [],
-          );
+          await callback({
+            text: "❌ Unable to connect to Discord services. Please try again later or contact support.",
+            source: "discord",
+          });
         }
-        return false;
+        return {
+          success: false,
+          error: "Unable to connect to Discord services",
+        };
       }
 
       let textChannels: TextChannel[] = [];
@@ -245,13 +164,13 @@ export const checkInFormatAction: Action = {
       const room = state.data?.room ?? (await runtime.getRoom(message.roomId));
       if (!room) {
         logger.error("No room found for the message");
-        return false;
+        return { success: false, error: "No room found for the message" };
       }
 
       const serverId = room.serverId;
       if (!serverId) {
         logger.error("No server ID found for room");
-        return false;
+        return { success: false, error: "No server ID found for room" };
       }
 
       logger.info(`Using server ID: ${serverId}`);
@@ -291,14 +210,16 @@ export const checkInFormatAction: Action = {
           }
         } catch (error: unknown) {
           const err = error as Error;
-          logger.error("Error fetching Discord channels:", err);
-          logger.debug("Error details:", err.stack || String(err));
+          logger.error(
+            `Error fetching Discord channels: ${toErrorMessage(error)}`,
+          );
+          logger.debug(`Error details: ${err.stack || String(error)}`);
         }
       } else {
         logger.warn("Discord service or client is not available");
       }
 
-      logger.info("Text channels variable:", textChannels);
+      logger.info(`Text channels variable: ${stringifyForLog(textChannels)}`);
 
       // Rest of your existing handler code...
       logger.info("=== CHECK-IN HANDLER START ===");
@@ -309,7 +230,7 @@ export const checkInFormatAction: Action = {
 
       if (!callback) {
         logger.warn("No callback function provided");
-        return false;
+        return { success: false, error: "No callback function provided" };
       }
 
       // Check if report channel config exists for this server
@@ -323,16 +244,16 @@ export const checkInFormatAction: Action = {
         tableName: "messages",
       });
       logger.info("Retrieved memories:", JSON.stringify(memories, null, 2));
-      logger.debug("Raw memories object:", memories);
+      logger.debug(`Raw memories object: ${stringifyForLog(memories)}`);
 
-      logger.info("Looking for existing config with serverId:", serverId);
+      logger.info(`Looking for existing config with serverId: ${serverId}`);
       const existingConfig = memories.find((memory) => {
-        logger.info("Checking memory:", memory);
+        logger.info(`Checking memory: ${stringifyForLog(memory)}`);
         const isReportConfig = memory.content.type === "report-channel-config";
 
         return isReportConfig;
       });
-      logger.info("Found existing config:", existingConfig);
+      logger.info(`Found existing config: ${stringifyForLog(existingConfig)}`);
 
       // if (!existingConfig) {
       //   logger.info('No existing report channel config found - sending report form first');
@@ -363,32 +284,29 @@ export const checkInFormatAction: Action = {
         logger.debug(
           `Generated channels list with ${textChannels.length} channels`,
         );
-        await callback(
-          {
-            text:
-              `Let's set up check-ins for your team members! 📅\n\n` +
-              `First, I need to know where to send the check-in updates when team members respond.\n\n` +
-              `**Available channels:**\n${channelsList}\n\n` +
-              `1️⃣ **Channel for Updates:** Which channel from the list above should the updates be posted once collected from users?\n\n` +
-              `2️⃣ **Check-in Type:** Choose one of the following:\n` +
-              `   • Daily Standup\n` +
-              `   • Sprint Check-in\n` +
-              `   • Mental Health Check-in\n` +
-              `   • Project Status Update\n` +
-              `   • Team Retrospective\n\n` +
-              `3️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
-              `4️⃣ **Frequency:** How often should check-ins occur?\n` +
-              `   • Weekdays\n` +
-              `   • Daily\n` +
-              `   • Weekly\n` +
-              `   • Bi-weekly\n` +
-              `   • Monthly\n` +
-              `5️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC) - Please note all times will be in UTC timezone` +
-              `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
-            source: messageSource,
-          },
-          [],
-        );
+        await callback({
+          text:
+            `Let's set up check-ins for your team members! 📅\n\n` +
+            `First, I need to know where to send the check-in updates when team members respond.\n\n` +
+            `**Available channels:**\n${channelsList}\n\n` +
+            `1️⃣ **Channel for Updates:** Which channel from the list above should the updates be posted once collected from users?\n\n` +
+            `2️⃣ **Check-in Type:** Choose one of the following:\n` +
+            `   • Daily Standup\n` +
+            `   • Sprint Check-in\n` +
+            `   • Mental Health Check-in\n` +
+            `   • Project Status Update\n` +
+            `   • Team Retrospective\n\n` +
+            `3️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
+            `4️⃣ **Frequency:** How often should check-ins occur?\n` +
+            `   • Weekdays\n` +
+            `   • Daily\n` +
+            `   • Weekly\n` +
+            `   • Bi-weekly\n` +
+            `   • Monthly\n` +
+            `5️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC) - Please note all times will be in UTC timezone` +
+            `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
+          source: messageSource,
+        });
 
         logger.info("Sent initial check-in configuration message");
       } else {
@@ -406,32 +324,29 @@ export const checkInFormatAction: Action = {
           `Generated channels list with ${textChannels.length} channels for existing config`,
         );
 
-        await callback(
-          {
-            text:
-              `Let's set up your team check-in schedule! 📅\n\n` +
-              `Please provide the following information (you can answer all at once or one by one):\n\n` +
-              `1️⃣ **Check-in Type:** Choose one of the following:\n` +
-              `   • Daily Standup\n` +
-              `   • Sprint Check-in\n` +
-              `   • Mental Health Check-in\n` +
-              `   • Project Status Update\n` +
-              `   • Team Retrospective\n\n` +
-              `2️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
-              `**Available channels:**\n${channelsList}\n\n` +
-              `3️⃣ **Frequency:** How often should check-ins occur?\n` +
-              `   • Weekdays\n` +
-              `   • Daily\n` +
-              `   • Weekly\n` +
-              `   • Bi-weekly\n` +
-              `   • Monthly\n` +
-              `   • Custom\n\n` +
-              `4️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC)` +
-              `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
-            source: messageSource,
-          },
-          [],
-        );
+        await callback({
+          text:
+            `Let's set up your team check-in schedule! 📅\n\n` +
+            `Please provide the following information (you can answer all at once or one by one):\n\n` +
+            `1️⃣ **Check-in Type:** Choose one of the following:\n` +
+            `   • Daily Standup\n` +
+            `   • Sprint Check-in\n` +
+            `   • Mental Health Check-in\n` +
+            `   • Project Status Update\n` +
+            `   • Team Retrospective\n\n` +
+            `2️⃣ **Channel for Check-ins:** Which channel should team members be checked in from?\n\n` +
+            `**Available channels:**\n${channelsList}\n\n` +
+            `3️⃣ **Frequency:** How often should check-ins occur?\n` +
+            `   • Weekdays\n` +
+            `   • Daily\n` +
+            `   • Weekly\n` +
+            `   • Bi-weekly\n` +
+            `   • Monthly\n` +
+            `   • Custom\n\n` +
+            `4️⃣ **Time:** What time should check-ins happen? (e.g., 9:00 AM UTC)` +
+            `Please remember to type "Record Check-in details" when you're finished to save your configuration.`,
+          source: messageSource,
+        });
 
         logger.info(
           "Sent check-in schedule configuration message with channel list",
@@ -439,13 +354,18 @@ export const checkInFormatAction: Action = {
       }
 
       logger.info("Check-in setup message sent successfully");
-      return true;
+      return { success: true };
     } catch (error: unknown) {
       const err = error as Error;
       logger.error("=== CHECK-IN HANDLER ERROR ===");
-      logger.error(`Error processing check-in schedule setup: ${err}`);
+      logger.error(
+        `Error processing check-in schedule setup: ${toErrorMessage(error)}`,
+      );
       logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
-      return false;
+      return {
+        success: false,
+        error: toErrorMessage(error),
+      };
     }
   },
   examples: [

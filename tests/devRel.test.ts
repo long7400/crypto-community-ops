@@ -1,133 +1,164 @@
 // tests/devRel.test.ts
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { devRel } from '../src/devRel';
-import type { IAgentRuntime } from '@elizaos/core';
-import { DevRelTestSuite } from './test_suites/DevRelTestSuite';
 
-describe('devRel Agent Test Suite', () => {
-  let mockScenarioService: any;
-  let mockRuntime: IAgentRuntime;
+import type { IAgentRuntime } from "@elizaos/core";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { devRel } from "../src/devRel";
+import { DevRelTestSuite } from "./test_suites/DevRelTestSuite";
 
-  beforeEach(() => {
-    vi.restoreAllMocks();
-    vi.unstubAllEnvs();
+describe("devRel Agent Test Suite", () => {
+	let mockScenarioService: any;
+	let mockRuntime: IAgentRuntime;
 
-    mockScenarioService = {
-      createWorld: vi.fn().mockResolvedValue('world-id'),
-      createRoom: vi.fn().mockResolvedValue('room-id'),
-      addParticipant: vi.fn().mockResolvedValue(true),
-      sendMessage: vi.fn().mockResolvedValue(true),
-      waitForCompletion: vi.fn().mockResolvedValue(true),
-    };
+	beforeEach(() => {
+		vi.restoreAllMocks();
+		delete process.env.DEVREL_IMPORT_KNOWLEDGE;
 
-    mockRuntime = {
-      getService: vi.fn().mockReturnValue(mockScenarioService),
-      agentId: 'agent-id',
-    } as unknown as IAgentRuntime;
-  });
+		mockScenarioService = {
+			createWorld: vi.fn().mockResolvedValue("world-id"),
+			createRoom: vi.fn().mockResolvedValue("room-id"),
+			addParticipant: vi.fn().mockResolvedValue(true),
+			sendMessage: vi.fn().mockResolvedValue(true),
+			waitForCompletion: vi.fn().mockResolvedValue(true),
+		};
 
-  describe('Core Developer Support Functionality', () => {
-    it('should handle technical documentation requests', async () => {
-      const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Documentation Query');
+		mockRuntime = {
+			getService: vi.fn().mockReturnValue(mockScenarioService),
+			agentId: "agent-id",
+		} as unknown as IAgentRuntime;
+	});
 
-      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
+	describe("Core Developer Support Functionality", () => {
+		it("should handle technical documentation requests", async () => {
+			const testSuite = new DevRelTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Documentation Query",
+			);
 
-      expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Doc Test', 'Test Developer');
-      expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
-        mockRuntime,
-        'world-id',
-        'room-id',
-        'How do I implement custom actions in ElizaOS?'
-      );
-    });
+			await expect(test?.fn(mockRuntime)).resolves.toBeUndefined();
 
-    it('should assist with plugin integration', async () => {
-      const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Plugin Integration');
+			expect(mockScenarioService.createWorld).toHaveBeenCalledWith(
+				"Doc Test",
+				"Test Developer",
+			);
+			expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
+				mockRuntime,
+				"world-id",
+				"room-id",
+				"How do I implement custom actions in ElizaOS?",
+			);
+		});
 
-      await expect(test?.fn(mockRuntime)).resolves.not.toThrow();
-      expect(mockScenarioService.createWorld).toHaveBeenCalledWith('Plugin Test', 'Test Developer');
-    });
-  });
+		it("should assist with plugin integration", async () => {
+			const testSuite = new DevRelTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Plugin Integration",
+			);
 
-  describe('Knowledge Base Integration', () => {
-    it('should reference documentation in responses', async () => {
-      const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Documentation Reference');
+			await expect(test?.fn(mockRuntime)).resolves.toBeUndefined();
+			expect(mockScenarioService.createWorld).toHaveBeenCalledWith(
+				"Plugin Test",
+				"Test Developer",
+			);
+		});
+	});
 
-      // Setup mock response
-      mockScenarioService.sendMessage.mockImplementationOnce(
-        (_: any, __: any, ___: any, msg: string) => {
-          return Promise.resolve({
-            content: { text: `${msg}\nRefer to documentation: https://docs.elizaos.com` },
-          });
-        }
-      );
+	describe("Knowledge Base Integration", () => {
+		it("should reference documentation in responses", async () => {
+			const testSuite = new DevRelTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Documentation Reference",
+			);
 
-      await test?.fn(mockRuntime);
+			// Setup mock response
+			mockScenarioService.sendMessage.mockImplementationOnce(
+				(_: any, __: any, ___: any, msg: string) => {
+					return Promise.resolve({
+						content: {
+							text: `${msg}\nRefer to documentation: https://docs.elizaos.com`,
+						},
+					});
+				},
+			);
 
-      const messages = mockScenarioService.sendMessage.mock.calls;
-      expect(messages[0][3]).toMatch(/How do I implement custom actions in ElizaOS?/);
-    });
+			await test?.fn(mockRuntime);
 
-    it('should access source code knowledge when enabled', async () => {
-      vi.stubEnv('DEVREL_IMPORT_KNOWLEDGE', 'true');
-      const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Source Code Knowledge');
+			const messages = mockScenarioService.sendMessage.mock.calls;
+			expect(messages[0][3]).toMatch(
+				/How do I implement custom actions in ElizaOS?/,
+			);
+		});
 
-      // Setup mock response with source code reference
-      mockScenarioService.sendMessage.mockImplementationOnce(
-        (_: any, __: any, ___: any, msg: string) => {
-          return Promise.resolve({
-            content: {
-              text: `${msg}\nSource code location: src/elizaos/core/agent-runtime.ts`,
-            },
-          });
-        }
-      );
+		it("should access source code knowledge when enabled", async () => {
+			vi.stubEnv("DEVREL_IMPORT_KNOWLEDGE", "true");
+			const testSuite = new DevRelTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Source Code Knowledge",
+			);
 
-      await test?.fn(mockRuntime);
+			// Setup mock response with source code reference
+			mockScenarioService.sendMessage.mockImplementationOnce(
+				(_: any, __: any, ___: any, msg: string) => {
+					return Promise.resolve({
+						content: {
+							text: `${msg}\nSource code location: src/elizaos/core/agent-runtime.ts`,
+						},
+					});
+				},
+			);
 
-      expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
-        mockRuntime,
-        'world-id',
-        'room-id',
-        expect.stringContaining('AgentRuntime')
-      );
-    });
-  });
+			await test?.fn(mockRuntime);
 
-  describe('Configuration Validation', () => {
-    it('should have correct developer-focused settings', () => {
-      expect(devRel.character.settings?.avatar).toBeDefined();
-      expect(devRel.character.plugins).toContain('@elizaos/plugin-discord');
-    });
+			expect(mockScenarioService.sendMessage).toHaveBeenCalledWith(
+				mockRuntime,
+				"world-id",
+				"room-id",
+				expect.stringContaining("AgentRuntime"),
+			);
+		});
+	});
 
-    it('should maintain technical response style', () => {
-      expect(devRel.character.style?.all).toContain('Use clear, concise, and technical language');
-    });
-  });
+	describe("Configuration Validation", () => {
+		it("should have correct developer-focused settings", () => {
+			expect(devRel.character.settings?.avatar).toBeDefined();
+			expect(devRel.character.plugins).toContain("@elizaos/plugin-discord");
+		});
 
-  describe('Error Handling', () => {
-    it('should handle missing documentation paths', async () => {
-      const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Missing Documentation');
+		it("should maintain technical response style", () => {
+			expect(devRel.character.style?.all).toContain(
+				"Use clear, concise, and technical language",
+			);
+		});
+	});
 
-      mockScenarioService.sendMessage.mockRejectedValueOnce(new Error('Documentation not found'));
+	describe("Error Handling", () => {
+		it("should handle missing documentation paths", async () => {
+			const testSuite = new DevRelTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Missing Documentation",
+			);
 
-      await expect(test?.fn(mockRuntime)).rejects.toThrow('Documentation not found');
-    });
+			mockScenarioService.sendMessage.mockRejectedValueOnce(
+				new Error("Documentation not found"),
+			);
 
-    it('should handle codebase navigation errors', async () => {
-      const testSuite = new DevRelTestSuite();
-      const test = testSuite.tests.find((t) => t.name === 'Test Code Navigation');
+			await expect(test?.fn(mockRuntime)).rejects.toThrow(
+				"Documentation not found",
+			);
+		});
 
-      mockScenarioService.waitForCompletion.mockRejectedValueOnce(
-        new Error('Could not locate code reference')
-      );
+		it("should handle codebase navigation errors", async () => {
+			const testSuite = new DevRelTestSuite();
+			const test = testSuite.tests.find(
+				(t) => t.name === "Test Code Navigation",
+			);
 
-      await expect(test?.fn(mockRuntime)).rejects.toThrow('Could not locate code reference');
-    });
-  });
+			mockScenarioService.waitForCompletion.mockRejectedValueOnce(
+				new Error("Could not locate code reference"),
+			);
+
+			await expect(test?.fn(mockRuntime)).rejects.toThrow(
+				"Could not locate code reference",
+			);
+		});
+	});
 });

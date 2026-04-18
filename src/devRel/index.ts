@@ -1,9 +1,9 @@
-import { logger } from "@elizaos/core";
-import type { Character } from "@elizaos/core";
-import dotenv from "dotenv";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import type { Character } from "@elizaos/core";
+import { logger } from "@elizaos/core";
+import dotenv from "dotenv";
 import { initCharacter } from "../init";
 
 // Get the current file's directory
@@ -36,14 +36,16 @@ function getFilesRecursively(dir: string, extensions: string[]): string[] {
       try {
         return getFilesRecursively(folder, extensions);
       } catch (error) {
-        logger.warn(`Error accessing folder ${folder}:`, error);
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`Error accessing folder ${folder}: ${message}`);
         return [];
       }
     });
 
     return [...files, ...subFiles];
   } catch (error) {
-    logger.warn(`Error reading directory ${dir}:`, error);
+    const message = error instanceof Error ? error.message : String(error);
+    logger.warn(`Error reading directory ${dir}: ${message}`);
     return [];
   }
 }
@@ -66,8 +68,9 @@ function loadDocumentation(directoryPath: string): string[] {
         const content = fs.readFileSync(filePath, "utf-8");
         return `Path: ${relativePath}\n\n${content}`;
       } catch (error) {
-        logger.warn(`Error reading file ${filePath}:`, error);
-        return `Path: ${path.relative(basePath, filePath)}\n\nError reading file: ${error}`;
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`Error reading file ${filePath}: ${message}`);
+        return `Path: ${path.relative(basePath, filePath)}\n\nError reading file: ${message}`;
       }
     });
   } catch (error) {
@@ -108,8 +111,9 @@ function loadSourceCode(packagesDir: string): string[] {
         const content = fs.readFileSync(filePath, "utf-8");
         return `Path: ${relativePath}\n\n${content}`;
       } catch (error) {
-        logger.warn(`Error reading file ${filePath}:`, error);
-        return `Path: ${path.relative(basePath, filePath)}\n\nError reading file: ${error}`;
+        const message = error instanceof Error ? error.message : String(error);
+        logger.warn(`Error reading file ${filePath}: ${message}`);
+        return `Path: ${path.relative(basePath, filePath)}\n\nError reading file: ${message}`;
       }
     });
   } catch (error) {
@@ -165,8 +169,10 @@ const character: Partial<Character> = {
     "@elizaos/plugin-sql",
     ...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
     ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),
-    ...(!process.env.OPENAI_API_KEY ? ["@elizaos/plugin-local-ai"] : []),
     ...(process.env.OPENROUTER_API_KEY ? ["@elizaos/plugin-openrouter"] : []),
+    ...(!process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY
+      ? ["@elizaos/plugin-local-ai"]
+      : []),
     "@elizaos/plugin-discord",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-video-understanding",
@@ -210,7 +216,7 @@ const config = {
       secret: false,
       usageDescription:
         "Define which ElizaOS documentation sources Eddy should reference when helping developers",
-      validation: (value: string) => typeof value === "string",
+      validation: (value) => typeof value === "string",
     },
     ENABLE_SOURCE_CODE_KNOWLEDGE: {
       name: "Enable Source Code Knowledge",
@@ -220,10 +226,10 @@ const config = {
       secret: false,
       usageDescription:
         "If enabled, Eddy will have knowledge of the ElizaOS source code for better assistance",
-      validation: (value: boolean) => typeof value === "boolean",
+      validation: (value) => typeof value === "boolean",
     },
   },
-};
+} satisfies import("@elizaos/core").OnboardingConfig;
 
 export const devRel = {
   character,

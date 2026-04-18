@@ -22,8 +22,10 @@ const character: Character = {
     "@elizaos/plugin-sql",
     ...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
     ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),
-    ...(!process.env.OPENAI_API_KEY ? ["@elizaos/plugin-local-ai"] : []),
     ...(process.env.OPENROUTER_API_KEY ? ["@elizaos/plugin-openrouter"] : []),
+    ...(!process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY
+      ? ["@elizaos/plugin-local-ai"]
+      : []),
     "@elizaos/plugin-discord",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-video-understanding",
@@ -353,7 +355,7 @@ const config: OnboardingConfig = {
       secret: false,
       usageDescription:
         "Define which community platforms Ruby should track and provide information about",
-      validation: (value: string) => typeof value === "string",
+      validation: (value) => typeof value === "string",
     },
   },
 };

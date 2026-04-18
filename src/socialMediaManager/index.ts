@@ -34,8 +34,10 @@ const character: Character = {
     "@elizaos/plugin-sql",
     ...(process.env.ANTHROPIC_API_KEY ? ["@elizaos/plugin-anthropic"] : []),
     ...(process.env.OPENAI_API_KEY ? ["@elizaos/plugin-openai"] : []),
-    ...(!process.env.OPENAI_API_KEY ? ["@elizaos/plugin-local-ai"] : []),
     ...(process.env.OPENROUTER_API_KEY ? ["@elizaos/plugin-openrouter"] : []),
+    ...(!process.env.OPENAI_API_KEY && !process.env.OPENROUTER_API_KEY
+      ? ["@elizaos/plugin-local-ai"]
+      : []),
     "@elizaos/plugin-discord",
     "@elizaos/plugin-twitter",
     "@elizaos/plugin-pdf",
@@ -266,7 +268,8 @@ export const config: OnboardingConfig = {
       public: true,
       secret: false,
       usageDescription: "The Twitter username to use for posting.",
-      validation: (value: string) => value.length > 0 && value.length <= 15,
+      validation: (value) =>
+        typeof value === "string" && value.length > 0 && value.length <= 15,
     },
     TWITTER_EMAIL: {
       name: "Twitter Email",
@@ -277,7 +280,8 @@ export const config: OnboardingConfig = {
       dependsOn: [],
       usageDescription:
         "The email associated with the Twitter account to post from.",
-      validation: (value: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
+      validation: (value) =>
+        typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
     },
     TWITTER_PASSWORD: {
       name: "Twitter Password",
@@ -309,7 +313,12 @@ export const config: OnboardingConfig = {
       dependsOn: [],
       usageDescription:
         "The channels where the agent should post announcements to",
-      validation: (value: string[]) => value.length > 0,
+      validation: (value) =>
+        Array.isArray(value) && value.every((item) => typeof item === "string")
+          ? value.length > 0
+          : typeof value === "string"
+            ? value.trim().length > 0
+            : false,
     },
   },
 };

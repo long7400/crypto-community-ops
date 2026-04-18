@@ -1,5 +1,6 @@
 import {
   type Action,
+  type ActionResult,
   createUniqueUuid,
   type HandlerCallback,
   type IAgentRuntime,
@@ -8,6 +9,7 @@ import {
   type State,
   type UUID,
 } from "@elizaos/core";
+import { stringifyForLog, toErrorMessage } from "../logging";
 
 interface EntityPlatformMetadata {
   metadata?: {
@@ -71,7 +73,9 @@ export const updatesFormatAction: Action = {
       return true;
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error("Error in updatesFormatAction validation:", err);
+      logger.error(
+        `Error in updatesFormatAction validation: ${toErrorMessage(error)}`,
+      );
       logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
       return false;
     }
@@ -82,14 +86,16 @@ export const updatesFormatAction: Action = {
     state: State | undefined,
     options: Record<string, unknown> = {},
     callback?: HandlerCallback,
-  ): Promise<boolean> => {
+  ): Promise<ActionResult> => {
     try {
       logger.info("=== UPDATES-FORMAT HANDLER START ===");
 
-      if (!state) return false;
+      if (!state) {
+        return { success: false, error: "Missing state for updates format" };
+      }
       if (!callback) {
         logger.warn("No callback function provided");
-        return false;
+        return { success: false, error: "No callback function provided" };
       }
 
       const entityById = (await runtime.getEntityById(
@@ -103,23 +109,18 @@ export const updatesFormatAction: Action = {
 
       // Log the telegram and discord metadata for debugging
       logger.info(
-        "Entity metadata - Telegram:",
-        JSON.stringify(entityById?.metadata?.telegram || "Not available"),
+        `Entity metadata - Telegram: ${stringifyForLog(entityById?.metadata?.telegram || "Not available")}`,
       );
       logger.info(
-        "Entity metadata - Discord:",
-        JSON.stringify(entityById?.metadata?.discord || "Not available"),
+        `Entity metadata - Discord: ${stringifyForLog(entityById?.metadata?.discord || "Not available")}`,
       );
 
       if (!username) {
         logger.error("No username found in state");
-        await callback(
-          {
-            text: "❌ Failed to identify your username. Please try again.",
-          },
-          [],
-        );
-        return false;
+        await callback({
+          text: "❌ Failed to identify your username. Please try again.",
+        });
+        return { success: false, error: "No username found in state" };
       }
 
       logger.info(`Looking for updates format for user: ${username}`);
@@ -162,11 +163,12 @@ export const updatesFormatAction: Action = {
 
       // Log team members and username for debugging
       logger.info(
-        `Looking for username: ${username} among team members:`,
-        allTeamMembers.map((member) => ({
-          tgName: member.tgName,
-          discordName: member.discordName,
-        })),
+        `Looking for username: ${username} among team members: ${stringifyForLog(
+          allTeamMembers.map((member) => ({
+            tgName: member.tgName,
+            discordName: member.discordName,
+          })),
+        )}`,
       );
 
       // Try to find the team member by username
@@ -181,13 +183,13 @@ export const updatesFormatAction: Action = {
 
       if (!teamMember) {
         logger.info(`No team member found with username ${username}`);
-        await callback(
-          {
-            text: `❌ No team member found with username ${username}. Please make sure you are registered as a team member.`,
-          },
-          [],
-        );
-        return true;
+        await callback({
+          text: `❌ No team member found with username ${username}. Please make sure you are registered as a team member.`,
+        });
+        return {
+          success: false,
+          error: `No team member found with username ${username}`,
+        };
       }
 
       logger.info(`Found team member: ${JSON.stringify(teamMember)}`);
@@ -215,30 +217,26 @@ export const updatesFormatAction: Action = {
           `Important: End your message with "sending my personal updates" so it can be properly tracked.`;
       }
 
-      await callback(
-        {
-          text: responseText,
-        },
-        [],
-      );
+      await callback({
+        text: responseText,
+      });
 
       logger.info("=== UPDATES-FORMAT HANDLER END ===");
-      return true;
+      return { success: true };
     } catch (error: unknown) {
       const err = error as Error;
       logger.error("=== UPDATES-FORMAT HANDLER ERROR ===");
-      logger.error(`Error processing updates format request: ${err}`);
+      logger.error(
+        `Error processing updates format request: ${toErrorMessage(error)}`,
+      );
       logger.error(`Error stack: ${err.stack || "No stack trace available"}`);
 
       if (callback) {
-        await callback(
-          {
-            text: "❌ An unexpected error occurred while fetching your updates format. Please try again later.",
-          },
-          [],
-        );
+        await callback({
+          text: "❌ An unexpected error occurred while fetching your updates format. Please try again later.",
+        });
       }
-      return false;
+      return { success: false, error: toErrorMessage(error) };
     }
   },
   examples: [

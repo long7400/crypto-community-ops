@@ -17,11 +17,12 @@ This project uses Spectra for Spec-Driven Development(SDD). Specs live in `opens
 
 discuss? → propose → apply ⇄ ingest → archive
 
-- `discuss` is optional; if requirements change mid-work, `ingest` then resume `apply`
+- `discuss` is optional — skip if requirements are clear
+- Requirements change mid-work? `ingest` → resume `apply`
 
 ## Parked Changes
 
-Parked changes are hidden from `spectra list`; use `spectra list --parked` and `spectra unpark <name>`. `$spectra-apply` / `$spectra-ingest` handle parked changes automatically.
+Changes can be parked（暫存）— temporarily moved out of `openspec/changes/`. Parked changes won't appear in `spectra list` but can be found with `spectra list --parked`. To restore: `spectra unpark <name>`. The `$spectra-apply` and `$spectra-ingest` skills handle parked changes automatically.
 
 <!-- SPECTRA:END -->
 

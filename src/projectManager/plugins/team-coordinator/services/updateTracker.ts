@@ -1,13 +1,13 @@
 import {
-  IAgentRuntime,
-  logger,
-  EventType,
-  Service,
   createUniqueUuid,
-  ModelType,
-  type UUID,
+  EventType,
+  type IAgentRuntime,
+  logger,
   type Memory,
   type MemoryMetadata,
+  ModelType,
+  Service,
+  type UUID,
 } from "@elizaos/core";
 import type {
   Channel,
@@ -16,8 +16,16 @@ import type {
   TextChannel,
   VoiceChannel,
 } from "discord.js";
-import { fetchCheckInSchedules } from "../actions/checkInList";
 import type { CheckInSchedule } from "../../../types";
+import { fetchCheckInSchedules } from "../actions/checkInList";
+import { toErrorMessage } from "../logging";
+import { getDiscordClient, getTelegramBot } from "../platform";
+import {
+  type CoordinatorMemory,
+  filterCheckInScheduleMemories,
+  getCheckInSchedulesRoomId,
+  getTeamMembersConfigMemory,
+} from "../storage";
 
 // Define interfaces for custom services
 interface IDiscordService extends Service {
@@ -58,16 +66,12 @@ export class TeamUpdateTrackerService extends Service {
   async start(): Promise<void> {
     logger.info("Starting Discord Channel Service");
     try {
-      const discordService = this.runtime.getService(
-        "discord",
-      ) as IDiscordService;
-      const telegramService = this.runtime.getService(
-        "telegram",
-      ) as ITelegramService;
+      const discordResult = await getDiscordClient(this.runtime);
+      const telegramResult = await getTelegramBot(this.runtime);
 
-      if (discordService?.client) {
+      if (discordResult.ok) {
         logger.info("Discord service found, client available");
-        this.client = discordService.client;
+        this.client = discordResult.client as Client;
       } else {
         logger.warn(
           "Discord service not found or client not available - will try to connect later",
@@ -75,9 +79,9 @@ export class TeamUpdateTrackerService extends Service {
         this.setupDiscordRetry();
       }
 
-      if (telegramService?.bot) {
+      if (telegramResult.ok) {
         logger.info("Telegram service found, client available");
-        this.telegramBot = telegramService.bot;
+        this.telegramBot = telegramResult.client;
       } else {
         logger.warn(
           "Telegram service not found or client not available - will try to connect later",
@@ -85,7 +89,9 @@ export class TeamUpdateTrackerService extends Service {
         this.setupTelegramRetry();
       }
     } catch (error) {
-      logger.error("Error initializing Discord Channel Service:", error);
+      logger.error(
+        `Error initializing Discord Channel Service: ${toErrorMessage(error)}`,
+      );
     }
   }
 
@@ -93,46 +99,19 @@ export class TeamUpdateTrackerService extends Service {
     logger.info("Setting up retry for Discord service connection");
     const intervalId = setInterval(async () => {
       try {
-        const discordService = this.runtime.getService(
-          "discord",
-        ) as IDiscordService;
-        if (discordService?.client) {
+        const discordResult = await getDiscordClient(this.runtime);
+        if (discordResult.ok) {
           logger.info("Discord service now available, connecting client");
-          this.client = discordService.client;
-
-          // Test the getTeamMembers function with sample server IDs
-          const testServerIds = ["922791729709613096"];
-          for (const serverId of testServerIds) {
-            logger.info(`Testing getTeamMembers with server ID: ${serverId}`);
-            this.getTeamMembers(serverId)
-              .then((members) => {
-                logger.info(
-                  `Found ${members.length} team members for server ${serverId}`,
-                );
-                // Log all users instead of just a sample
-                if (members.length > 0) {
-                  logger.info("All team members data:");
-                  members.forEach((member, index) => {
-                    logger.info(`Member ${index + 1}:`, JSON.stringify(member));
-                  });
-                } else {
-                  logger.info("No team members found for this server");
-                }
-              })
-              .catch((error) => {
-                logger.error(
-                  `Error fetching team members for server ${serverId}:`,
-                  error,
-                );
-              });
-          }
+          this.client = discordResult.client as Client;
 
           clearInterval(intervalId);
         } else {
           logger.debug("Discord service still not available, will retry");
         }
       } catch (error) {
-        logger.debug("Error checking for Discord service:", error);
+        logger.debug(
+          `Error checking for Discord service: ${toErrorMessage(error)}`,
+        );
       }
     }, 15000);
   }
@@ -141,81 +120,19 @@ export class TeamUpdateTrackerService extends Service {
     logger.info("Setting up retry for Telegram service connection");
     const intervalId = setInterval(async () => {
       try {
-        const telegram = this.runtime.getService(
-          "telegram",
-        ) as ITelegramService;
-        if (telegram?.bot) {
+        const telegramResult = await getTelegramBot(this.runtime);
+        if (telegramResult.ok) {
           logger.info("Telegram service now available, connecting bot");
-          // this is a Telegraf instance
-          this.telegramBot = telegram.bot;
-
-          logger.info("Telegram bot found, fetching joined groups");
-
-          try {
-            const updates = await this.telegramBot.telegram.getMe();
-            logger.info("Bot info:", updates);
-
-            // Get all chats the bot is a member of
-            logger.info("Fetching all Telegram chats...");
-            // channel id : -1002524701365
-            const channelId = "-1002524701365";
-            logger.info("Fetching topics for channel:", channelId);
-            try {
-              const topics =
-                await this.telegramBot.telegram.getChatAdministrators(
-                  channelId,
-                );
-              logger.info("Channel topics:", topics);
-              // 2. You can get the total count of members
-              const memberCount =
-                await this.telegramBot.telegram.getChatMembersCount(channelId);
-              console.log(`Total members in channel: ${memberCount}`);
-
-              // try {
-              //   logger.info('Attempting to send message to samarth0x in channel');
-              //   try {
-              //     // To message in a channel where samarth0x is present
-              //     const sendMessage = await this.telegramBot.telegram.sendMessage(
-              //       channelId, // Using the channel ID where samarth0x is present
-              //       '@samarth0x hello can you share your updates?' // Mentioning the user in the message
-              //     );
-              //     logger.info(
-              //       'Message sent successfully in channel mentioning samarth0x:',
-              //       sendMessage
-              //     );
-              //   } catch (channelMsgError) {
-              //     logger.error('Error sending message in channel:', channelMsgError);
-
-              //     // Try direct message if channel message fails
-              //     try {
-              //       logger.info('Attempting direct message to @samarth0x');
-              //       const directMessage = await this.telegramBot.telegram.sendMessage(
-              //         '@samarth0x',
-              //         'hello can you share your updates?'
-              //       );
-              //       logger.info('Direct message sent successfully to @samarth0x:', directMessage);
-              //     } catch (directMsgError) {
-              //       logger.error('Error sending direct message to @samarth0x:', directMsgError);
-              //     }
-              //   }
-              // }
-            } catch (error) {
-              logger.error("Error sending Telegram message:", error);
-              // The error in logs shows "chat not found" which might mean we need a chat ID instead of username
-              logger.info(
-                "Note: Telegram might require a numeric chat ID instead of a username",
-              );
-            }
-          } catch (err) {
-            logger.error("Error fetching Telegram groups:", err);
-          }
+          this.telegramBot = telegramResult.client;
 
           clearInterval(intervalId);
         } else {
           logger.debug("Telegram service still not available, will retry");
         }
       } catch (error) {
-        logger.debug("Error checking for Telegram service:", error);
+        logger.debug(
+          `Error checking for Telegram service: ${toErrorMessage(error)}`,
+        );
       }
     }, 15000);
   }
@@ -298,8 +215,10 @@ export class TeamUpdateTrackerService extends Service {
       return users;
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error(`Error fetching users for channel ${channelId}:`, err);
-      logger.error("Error stack:", err.stack);
+      logger.error(
+        `Error fetching users for channel ${channelId}: ${toErrorMessage(error)}`,
+      );
+      logger.error(`Error stack: ${err.stack}`);
       return [];
     }
   }
@@ -381,10 +300,9 @@ export class TeamUpdateTrackerService extends Service {
       } catch (error: unknown) {
         const err = error as Error;
         logger.error(
-          `Failed to send DM to user ${user.displayName} (${user.id}):`,
-          err,
+          `Failed to send DM to user ${user.displayName} (${user.id}): ${toErrorMessage(error)}`,
         );
-        logger.error("Error stack:", err.stack);
+        logger.error(`Error stack: ${err.stack}`);
       }
     }
 
@@ -417,29 +335,9 @@ export class TeamUpdateTrackerService extends Service {
       );
 
       // Create the consistent room ID for storing team members
-      const serverHash = serverId.replace(/[^a-zA-Z0-9]/g, "");
-      const roomIdForStoringTeamMembers = createUniqueUuid(
+      const teamMembersConfig = await getTeamMembersConfigMemory(
         this.runtime,
-        `store-team-members-${serverHash}`,
-      );
-
-      logger.info(
-        `Looking for team members in room: ${roomIdForStoringTeamMembers}`,
-      );
-
-      // Get memories from the team members storage room
-      const memories = await this.runtime.getMemories({
-        roomId: roomIdForStoringTeamMembers,
-        tableName: "messages",
-      });
-
-      logger.info(
-        `Found ${memories.length} memories in room ${roomIdForStoringTeamMembers}`,
-      );
-
-      // Find the team members config memory
-      const teamMembersConfig = memories.find(
-        (memory) => memory.content?.type === "store-team-members-memory",
+        serverId,
       );
 
       interface TeamMembersConfig {
@@ -487,7 +385,9 @@ export class TeamUpdateTrackerService extends Service {
       }));
     } catch (error: unknown) {
       const err = error as Error;
-      logger.error(`Error fetching team members for server ${serverId}:`, err);
+      logger.error(
+        `Error fetching team members for server ${serverId}: ${toErrorMessage(error)}`,
+      );
       logger.error(`Error stack: ${err.stack}`);
       return [];
     }
@@ -505,21 +405,17 @@ export class TeamUpdateTrackerService extends Service {
     this.isJobRunning = true;
     try {
       logger.info("Running check-in service job");
-      const discordService = this.runtime.getService(
-        "discord",
-      ) as IDiscordService;
-      const telegramService = this.runtime.getService(
-        "telegram",
-      ) as ITelegramService;
+      const discordResult = await getDiscordClient(this.runtime);
+      const telegramResult = await getTelegramBot(this.runtime);
 
-      if (discordService?.client) {
+      if (discordResult.ok) {
         logger.info("Discord service now available, connecting client");
-        this.client = discordService.client;
+        this.client = discordResult.client as Client;
       }
 
-      if (telegramService?.bot) {
+      if (telegramResult.ok) {
         logger.info("Telegram service found, client available");
-        this.telegramBot = telegramService.bot;
+        this.telegramBot = telegramResult.client;
       }
 
       // Dummy function for check-in service
@@ -605,7 +501,7 @@ export class TeamUpdateTrackerService extends Service {
                 // For simplicity, assume weekly is on Monday
                 frequencyMatches = currentDay === 1;
                 break;
-              case "BIWEEKLY":
+              case "BIWEEKLY": {
                 // For simplicity, assume biweekly is on every other Monday
                 // We can use the week number of the year to determine if it's an odd or even week
                 const weekNumber = Math.floor(
@@ -615,6 +511,7 @@ export class TeamUpdateTrackerService extends Service {
                 );
                 frequencyMatches = currentDay === 1 && weekNumber % 2 === 0;
                 break;
+              }
               case "MONTHLY":
                 // For simplicity, assume monthly is on the 1st of the month
                 frequencyMatches = now.getUTCDate() === 1;
@@ -637,8 +534,7 @@ export class TeamUpdateTrackerService extends Service {
           );
           if (matchingSchedules.length > 0) {
             logger.info(
-              "Matching schedules:",
-              JSON.stringify(matchingSchedules, null, 2),
+              `Matching schedules: ${JSON.stringify(matchingSchedules, null, 2)}`,
             );
 
             // Process each matching schedule to fetch users and send check-in requests
@@ -652,10 +548,10 @@ export class TeamUpdateTrackerService extends Service {
 
                 let serverName;
 
-                if (discordService?.client) {
+                if (this.client) {
                   logger.info("Discord service client is available");
 
-                  for (const [, guild] of discordService.client.guilds.cache) {
+                  for (const [, guild] of this.client.guilds.cache) {
                     const channels = await guild.channels.fetch();
                     const channel = channels.find((ch) => {
                       return (
@@ -726,7 +622,9 @@ export class TeamUpdateTrackerService extends Service {
                   await this.telegramBot.telegram.sendMessage(
                     serverId,
                     updateRequestMessage,
-                    { parse_mode: "Markdown" },
+                    {
+                      parse_mode: "Markdown",
+                    },
                   );
                   logger.info(
                     `Sent formatted update request to Telegram group ${serverId} with ${teamMembers.length} tagged members`,
@@ -849,9 +747,8 @@ export class TeamUpdateTrackerService extends Service {
                 // Update the last updated date for the schedule
                 try {
                   // Create a unique room ID for check-in schedules
-                  const checkInSchedulesRoomId = createUniqueUuid(
+                  const checkInSchedulesRoomId = getCheckInSchedulesRoomId(
                     this.runtime,
-                    "check-in-schedules",
                   );
                   logger.info(
                     `Updating last updated date for schedule ${schedule.scheduleId}`,
@@ -864,11 +761,9 @@ export class TeamUpdateTrackerService extends Service {
                   });
 
                   // Find the memory containing this schedule
-                  const scheduleMemory = memories.find((memory) => {
-                    if (
-                      memory?.content?.type !== "team-member-checkin-schedule"
-                    )
-                      return false;
+                  const scheduleMemory = filterCheckInScheduleMemories(
+                    memories as CoordinatorMemory[],
+                  ).find((memory) => {
                     if (!memory?.content?.schedule) return false;
 
                     const memSchedule = memory.content
@@ -887,10 +782,11 @@ export class TeamUpdateTrackerService extends Service {
 
                     // Update the memory with the new schedule
                     const updatedMemory: Partial<Memory> & { id: UUID } = {
-                      ...scheduleMemory,
+                      ...(scheduleMemory as Partial<Memory>),
                       id: scheduleMemory.id as UUID,
+                      roomId: scheduleMemory.roomId as UUID,
                       content: {
-                        ...scheduleMemory.content,
+                        ...(scheduleMemory.content as Memory["content"]),
                         schedule: updatedSchedule,
                       },
                     };
@@ -905,25 +801,23 @@ export class TeamUpdateTrackerService extends Service {
                     );
                   }
                 } catch (updateError: unknown) {
-                  const err = updateError as Error;
                   logger.error(
-                    `Error updating last updated date for schedule ${schedule.scheduleId}:`,
-                    err,
+                    `Error updating last updated date for schedule ${schedule.scheduleId}: ${toErrorMessage(updateError)}`,
                   );
                 }
               } catch (error: unknown) {
-                const err = error as Error;
                 logger.error(
-                  `Error processing schedule ${schedule.scheduleId}:`,
-                  err,
+                  `Error processing schedule ${schedule.scheduleId}: ${toErrorMessage(error)}`,
                 );
               }
             }
           }
         } catch (error: unknown) {
           const err = error as Error;
-          logger.error("Failed to fetch or process check-in schedules:", err);
-          logger.error("Error stack:", err.stack);
+          logger.error(
+            `Failed to fetch or process check-in schedules: ${toErrorMessage(error)}`,
+          );
+          logger.error(`Error stack: ${err.stack}`);
         }
       } else {
         logger.warn("Discord client not available for check-in service");

@@ -1,18 +1,20 @@
 import {
   type Action,
+  type ActionResult,
   ChannelType,
   type Content,
-  type HandlerCallback,
-  type IAgentRuntime,
-  type Memory,
-  ModelType,
-  type State,
   composePromptFromState,
   getUserServerRole,
   getWorldSettings,
+  type HandlerCallback,
+  type IAgentRuntime,
   logger,
+  type Memory,
+  ModelType,
   parseKeyValueXml,
+  type State,
 } from "@elizaos/core";
+import { toErrorMessage } from "../../projectManager/plugins/team-coordinator/logging";
 
 /**
  * Template for generating a tweet in the style and voice of a given agent.
@@ -83,7 +85,7 @@ async function validateTwitterConfig(
 
     return { isValid: true };
   } catch (error) {
-    logger.error("Error validating Twitter config:", error);
+    logger.error(`Error validating Twitter config: ${toErrorMessage(error)}`);
     return {
       isValid: false,
       error: "Error validating Twitter configuration",
@@ -107,7 +109,7 @@ async function ensureTwitterClient(
   let client = manager.getClient(serverId, runtime.agentId);
 
   if (!client) {
-    logger.info("Creating new Twitter client for server", serverId);
+    logger.info(`Creating new Twitter client for server ${serverId}`);
     client = await manager.createClient(runtime, serverId, worldSettings);
     if (!client) {
       throw new Error("Failed to create Twitter client");
@@ -189,9 +191,10 @@ const twitterPostAction: Action = {
     _options: any,
     callback: HandlerCallback | undefined,
     _responses?: Memory[],
-  ) => {
+  ): Promise<ActionResult> => {
     try {
-      if (!state) return false;
+      if (!state)
+        return { success: false, error: "Missing state for Twitter post" };
       const safeCallback = callback || (() => Promise.resolve([]));
       const room = state.data.room ?? (await runtime.getRoom(message.roomId));
       if (!room) {
@@ -217,7 +220,10 @@ const twitterPostAction: Action = {
           },
           "messages",
         );
-        return false;
+        return {
+          success: false,
+          error: "Twitter posts only work in group rooms",
+        };
       }
 
       const serverId = room.serverId;
@@ -247,18 +253,25 @@ const twitterPostAction: Action = {
       let cleanTweet = "";
       let thought = "";
 
-      if (parsedXml && parsedXml.tweet_text) {
+      if (parsedXml && typeof parsedXml.tweet_text === "string") {
         cleanTweet = parsedXml.tweet_text
           .trim()
           .replace(/^["'](.*)["']$/, "$1")
           .replace(/\\n/g, "\n");
-        thought = parsedXml.thought || "Generated tweet content.";
+        thought =
+          typeof parsedXml.thought === "string"
+            ? parsedXml.thought
+            : "Generated tweet content.";
       } else {
         // Fallback for safety, though ideally the XML is always returned
         logger.warn(
           "[Bootstrap] Failed to parse XML for tweet generation, using raw output.",
         );
-        cleanTweet = tweetContentRaw
+        const fallbackTweet =
+          typeof tweetContentRaw === "string"
+            ? tweetContentRaw
+            : String(tweetContentRaw);
+        cleanTweet = fallbackTweet
           .trim()
           .replace(/^["'](.*)["']$/, "$1")
           .replace(/\\n/g, "\n");
@@ -277,7 +290,10 @@ const twitterPostAction: Action = {
           actions: ["TWITTER_POST_FAILED"],
           source: message.content.source,
         });
-        return;
+        return {
+          success: false,
+          error: "User is not authorized to post tweets on behalf of this org",
+        };
       }
 
       // Prepare response content
@@ -398,14 +414,23 @@ const twitterPostAction: Action = {
         actions: ["TWITTER_POST_TASK_NEEDS_CONFIRM"],
       });
 
-      logger.info(
-        "TWITTER_POST_TASK_NEEDS_CONFIRM",
-        runtime.getTasks({ roomId: message.roomId, tags: ["TWITTER_POST"] }),
-      );
+      try {
+        logger.info(
+          "TWITTER_POST_TASK_NEEDS_CONFIRM",
+          JSON.stringify(
+            await runtime.getTasks({
+              roomId: message.roomId,
+              tags: ["TWITTER_POST"],
+            }),
+          ),
+        );
+      } catch (logErr) {
+        logger.warn(`Failed to fetch tasks for log: ${toErrorMessage(logErr)}`);
+      }
 
-      return responseContent;
+      return { success: true, text: responseContent.text };
     } catch (error) {
-      logger.error("Error in TWITTER_POST action:", error);
+      logger.error(`Error in TWITTER_POST action: ${toErrorMessage(error)}`);
       throw error;
     }
   },

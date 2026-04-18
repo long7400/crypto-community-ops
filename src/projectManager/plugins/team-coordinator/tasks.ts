@@ -1,10 +1,54 @@
 import {
   type IAgentRuntime,
-  type UUID,
   logger,
-  type Service,
+  type ServiceTypeName,
+  type UUID,
 } from "@elizaos/core";
+import { toErrorMessage } from "./logging";
 import { TeamUpdateTrackerService } from "./services/updateTracker";
+
+const TRACKER_SERVICE_LOAD_TIMEOUT_MS = 5000;
+
+async function waitForTrackerService(
+  runtime: IAgentRuntime,
+  trackerServiceType: ServiceTypeName,
+): Promise<TeamUpdateTrackerService> {
+  return await new Promise<TeamUpdateTrackerService>((resolve, reject) => {
+    let settled = false;
+    const timeoutId = setTimeout(() => {
+      settled = true;
+      reject(
+        new Error(
+          `TeamUpdateTrackerService load timed out after ${TRACKER_SERVICE_LOAD_TIMEOUT_MS}ms`,
+        ),
+      );
+    }, TRACKER_SERVICE_LOAD_TIMEOUT_MS);
+
+    const loadPromise = runtime.getServiceLoadPromise(
+      trackerServiceType,
+    ) as Promise<TeamUpdateTrackerService>;
+
+    loadPromise
+      .then(
+        (service) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          resolve(service);
+        },
+        (error) => {
+          if (settled) return;
+          settled = true;
+          clearTimeout(timeoutId);
+          reject(error);
+        },
+      )
+      .catch(() => {
+        // The rejection handler above handles the normal path; this absorbs
+        // any unexpected post-timeout rejection noise without changing behavior.
+      });
+  });
+}
 
 export const registerTasks = async (
   runtime: IAgentRuntime,
@@ -12,26 +56,32 @@ export const registerTasks = async (
 ) => {
   // Ensure worldId is set to the agent's ID if not provided
   const worldId = initialWorldId || (runtime.agentId as UUID);
+  const trackerServiceType =
+    TeamUpdateTrackerService.serviceType as ServiceTypeName;
 
-  // Try to get an existing service instance instead of creating a new one
-  let teamUpdateService: TeamUpdateTrackerService;
+  // Wait for the runtime-managed service instance instead of creating a fallback
+  let teamUpdateService: TeamUpdateTrackerService | null = null;
   try {
-    const existingService = runtime.getService(
-      TeamUpdateTrackerService.serviceType,
-    );
-    if (existingService) {
+    teamUpdateService = runtime.getService(
+      trackerServiceType,
+    ) as TeamUpdateTrackerService | null;
+
+    if (teamUpdateService) {
       logger.info("Using existing TeamUpdateTrackerService");
-      teamUpdateService = existingService as TeamUpdateTrackerService;
     } else {
-      logger.info("Creating new TeamUpdateTrackerService instance");
-      teamUpdateService = new TeamUpdateTrackerService(runtime);
+      logger.info(
+        "Waiting for runtime-managed TeamUpdateTrackerService registration",
+      );
+      teamUpdateService = await waitForTrackerService(
+        runtime,
+        trackerServiceType,
+      );
     }
   } catch (error) {
-    logger.warn(
-      "Error getting existing service, creating new instance:",
-      error,
+    logger.error(
+      `Error resolving TeamUpdateTrackerService for task registration: ${toErrorMessage(error)}`,
     );
-    teamUpdateService = new TeamUpdateTrackerService(runtime);
+    throw error;
   }
 
   // Clear existing tasks
@@ -56,7 +106,9 @@ export const registerTasks = async (
         logger.info("Running team check-in service job");
         await teamUpdateService.checkInServiceJob();
       } catch (error) {
-        logger.error("Failed to run check-in service job:", error);
+        logger.error(
+          `Failed to run check-in service job: ${toErrorMessage(error)}`,
+        );
       }
     },
   });

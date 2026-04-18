@@ -150,6 +150,7 @@ playwright-report/
 *.temp
 temp/
 tmp/
+.tmp/
 
 
 *.cursor*
