@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Service } from "@elizaos/core";
+import type { IAgentRuntime, Room, Service } from "@elizaos/core";
 
 export interface DiscordClientLike {
   users?: {
@@ -75,4 +75,51 @@ export function getTelegramBot(
   }
 
   return { ok: true, client: telegramService.bot };
+}
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+type DiscordChannelLike = {
+  guild?: { id?: string };
+  guildId?: string;
+};
+
+export async function resolveRoomServerId(
+  runtime: IAgentRuntime,
+  room: Pick<Room, "source" | "serverId" | "channelId"> | undefined,
+): Promise<string | undefined> {
+  if (!room?.serverId) {
+    return undefined;
+  }
+
+  if (room.source !== "discord" || !isUuidLike(room.serverId)) {
+    return room.serverId;
+  }
+
+  const discordResult = getDiscordClient(runtime);
+  if (
+    !discordResult.ok ||
+    !room.channelId ||
+    !discordResult.client.channels?.fetch
+  ) {
+    return room.serverId;
+  }
+
+  try {
+    const channel = (await discordResult.client.channels.fetch(
+      room.channelId,
+    )) as DiscordChannelLike | null;
+
+    if (!channel || typeof channel !== "object") {
+      return room.serverId;
+    }
+
+    return channel.guildId || channel.guild?.id || room.serverId;
+  } catch {
+    return room.serverId;
+  }
 }

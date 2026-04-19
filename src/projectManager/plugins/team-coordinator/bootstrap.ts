@@ -54,12 +54,19 @@ export async function bootstrapTeamCoordinator(
     delayMs?: number;
   },
 ): Promise<void> {
-  void registerTasksWithRetry(runtime, options.registerTasks, {
-    retries: options.retries,
-    delayMs: options.delayMs,
-  }).catch((error) => {
-    logger.error(
-      `Error while bootstrapping team coordinator tasks: ${toErrorMessage(error)}`,
-    );
-  });
+  const initPromise = runtime.initPromise ?? Promise.resolve();
+
+  void (async () => {
+    try {
+      await initPromise;
+      await registerTasksWithRetry(runtime, options.registerTasks, {
+        retries: options.retries,
+        delayMs: options.delayMs,
+      });
+    } catch (error) {
+      logger.error(
+        `Error while bootstrapping team coordinator tasks: ${toErrorMessage(error)}`,
+      );
+    }
+  })();
 }

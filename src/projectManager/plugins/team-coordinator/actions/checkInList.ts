@@ -12,14 +12,10 @@ import {
 } from "@elizaos/core";
 import type { CheckInSchedule } from "../../../types";
 import { stringifyForLog, toErrorMessage } from "../logging";
-import { isCoordinatorRecord } from "../storage";
+import { isStoredCoordinatorSchedule } from "../storage";
 
 function isStoredCheckInSchedule(value: unknown): value is CheckInSchedule {
-  return (
-    isCoordinatorRecord(value) &&
-    typeof value.scheduleId === "string" &&
-    typeof value.serverId === "string"
-  );
+  return isStoredCoordinatorSchedule(value);
 }
 
 export async function fetchCheckInSchedules(

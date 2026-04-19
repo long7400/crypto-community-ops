@@ -12,6 +12,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { stringifyForLog, toErrorMessage } from "../logging";
+import { resolveRoomServerId } from "../platform";
 import {
   type CoordinatorRecord,
   ensureCoordinatorRoom,
@@ -21,7 +22,8 @@ import {
   getCoordinatorRoomId,
   getTeamMembersConfigMemory,
   getTeamMembersRoomId,
-  isCoordinatorRecord,
+  isStoredCoordinatorTeamMember,
+  type StoredCoordinatorTeamMember,
 } from "../storage";
 
 interface TeamMember {
@@ -41,15 +43,11 @@ interface TeamMemberConfig {
   serverId: string;
 }
 
-function isStoredTeamMember(value: unknown): value is TeamMember {
-  return isCoordinatorRecord(value);
-}
-
 function getStoredTeamMembers(
   config: CoordinatorRecord | undefined,
-): TeamMember[] {
+): StoredCoordinatorTeamMember[] {
   const teamMembers = getCoordinatorArray(config, "teamMembers");
-  return teamMembers?.filter(isStoredTeamMember) ?? [];
+  return teamMembers?.filter(isStoredCoordinatorTeamMember) ?? [];
 }
 
 /**
@@ -61,7 +59,7 @@ function getStoredTeamMembers(
 async function fetchTeamMembersForServer(
   runtime: IAgentRuntime,
   serverId: string,
-): Promise<TeamMember[]> {
+): Promise<StoredCoordinatorTeamMember[]> {
   try {
     logger.info(`Fetching team members for server ${serverId}`);
 
@@ -97,7 +95,7 @@ async function fetchTeamMembersForServer(
  * @returns True if the member already exists, false otherwise
  */
 function isDuplicateTeamMember(
-  existingMembers: TeamMember[],
+  existingMembers: StoredCoordinatorTeamMember[],
   newMember: TeamMember,
 ): boolean {
   return existingMembers.some((member) => {
@@ -153,7 +151,7 @@ export const addTeamMemberAction: Action = {
         return false;
       }
 
-      const serverId = room.serverId;
+      const serverId = await resolveRoomServerId(runtime, room);
       if (!serverId) {
         logger.error("No server ID found for room");
         return false;
@@ -462,7 +460,7 @@ export const addTeamMemberAction: Action = {
 
             // Format team members into a readable list
             const teamMembersList = existingTeamMembers
-              .map((member: TeamMember, index: number) => {
+              .map((member, index: number) => {
                 const section = member.section || "Unassigned";
                 const format = member.format || "Text";
 
@@ -530,7 +528,7 @@ export const addTeamMemberAction: Action = {
 
             // Format the newly added team members for the response
             const newMembersList = newTeamMembers
-              .map((member: TeamMember, index) => {
+              .map((member, index) => {
                 const section = member.section || "Unassigned";
                 const format = member.format || "Text";
 
@@ -548,7 +546,7 @@ export const addTeamMemberAction: Action = {
             // Add a callback here to respond when new members are added
             const allTeamMembers = updatedTeamMembers;
             const teamMembersList = allTeamMembers
-              .map((member: TeamMember, index) => {
+              .map((member, index) => {
                 const section = member.section || "Unassigned";
 
                 let platformInfo = "";
@@ -598,7 +596,7 @@ export const addTeamMemberAction: Action = {
 
           // Format all team members for the response
           const teamMembersList = allTeamMembers
-            .map((member: TeamMember, index) => {
+            .map((member, index) => {
               const section = member.section || "Unassigned";
               const format = member.format || "Text";
 

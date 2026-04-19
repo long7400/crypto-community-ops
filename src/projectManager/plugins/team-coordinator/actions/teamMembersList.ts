@@ -10,33 +10,20 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { toErrorMessage } from "../logging";
+import { resolveRoomServerId } from "../platform";
 import {
   type CoordinatorRecord,
   getCoordinatorArray,
   getCoordinatorConfig,
-  isCoordinatorRecord,
+  isStoredCoordinatorTeamMember,
+  type StoredCoordinatorTeamMember,
 } from "../storage";
-
-interface TeamMember {
-  section: string;
-  tgName?: string;
-  discordName?: string;
-  format: string;
-  serverId: string;
-  serverName?: string;
-  createdAt?: string;
-  updatesFormat?: string[];
-}
-
-function isStoredTeamMember(value: unknown): value is TeamMember {
-  return isCoordinatorRecord(value);
-}
 
 function getStoredTeamMembers(
   config: CoordinatorRecord | undefined,
-): TeamMember[] {
+): StoredCoordinatorTeamMember[] {
   const teamMembers = getCoordinatorArray(config, "teamMembers");
-  return teamMembers?.filter(isStoredTeamMember) ?? [];
+  return teamMembers?.filter(isStoredCoordinatorTeamMember) ?? [];
 }
 
 /**
@@ -78,7 +65,7 @@ export const listTeamMembersAction: Action = {
         return false;
       }
 
-      const serverId = room.serverId;
+      const serverId = await resolveRoomServerId(runtime, room);
       if (!serverId) {
         logger.error("No server ID found for room");
         return false;
@@ -175,7 +162,7 @@ export const listTeamMembersAction: Action = {
       );
 
       // Group team members by section
-      const sectionMap = new Map<string, TeamMember[]>();
+      const sectionMap = new Map<string, StoredCoordinatorTeamMember[]>();
       teamMembers.forEach((member) => {
         const section = member.section || "Unassigned";
         if (!sectionMap.has(section)) {

@@ -1,11 +1,13 @@
 import { createUniqueUuid, type IAgentRuntime, logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { fetchCheckInSchedules } from "./actions/checkInList";
 import { bootstrapTeamCoordinator, registerTasksWithRetry } from "./bootstrap";
 import { stringifyForLog, toErrorMessage } from "./logging";
 import {
   getDiscordClient,
   getTelegramBot,
   requireDiscordClient,
+  resolveRoomServerId,
 } from "./platform";
 import { CheckInService } from "./services/CheckInService";
 import { TeamUpdateTrackerService } from "./services/updateTracker";
@@ -203,6 +205,32 @@ describe("team coordinator bootstrap", () => {
     expect(runtime.registerService).not.toHaveBeenCalled();
   });
 
+  it("waits for runtime initialization before starting deferred task registration", async () => {
+    let resolveInit: (() => void) | undefined;
+    const initPromise = new Promise<void>((resolve) => {
+      resolveInit = resolve;
+    });
+    const runtime = {
+      initPromise,
+      getTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as IAgentRuntime;
+    const register = vi.fn().mockResolvedValue(undefined);
+
+    await bootstrapTeamCoordinator(runtime, {
+      registerTasks: register,
+      retries: 1,
+      delayMs: 1,
+    });
+
+    expect(register).not.toHaveBeenCalled();
+
+    resolveInit?.();
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(register).toHaveBeenCalledTimes(1);
+  });
+
   it("waits for the runtime-managed tracker service before wiring task execution", async () => {
     const fallbackCheckInJob = vi
       .spyOn(TeamUpdateTrackerService.prototype, "checkInServiceJob")
@@ -305,6 +333,23 @@ describe("team coordinator platform readiness", () => {
     expect(() => requireDiscordClient(runtime)).toThrow(
       "Discord service not found",
     );
+  });
+
+  it("resolves raw discord server ids from rooms that only expose UUID aliases", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ guildId: "discord-guild-1" });
+    const runtime = {
+      getService: vi
+        .fn()
+        .mockReturnValue({ client: { channels: { fetch: fetchSpy } } }),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      resolveRoomServerId(runtime, {
+        source: "discord",
+        serverId: "550e8400-e29b-41d4-a716-446655440000",
+        channelId: "channel-123",
+      }),
+    ).resolves.toBe("discord-guild-1");
   });
 
   it("checks tracker platform readiness without awaiting synchronous helper results", async () => {
@@ -475,6 +520,80 @@ describe("team coordinator shared storage", () => {
     const memory = await getTeamMembersConfigMemory(runtime, "server-123");
 
     expect(memory?.id).toBe("memory-legacy");
+  });
+
+  it("filters malformed persisted team members before downstream consumers use string fields", async () => {
+    const runtime = {
+      agentId: "agent-id",
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          content: {
+            type: "store-team-members-memory",
+            config: {
+              serverId: "server-123",
+              teamMembers: [
+                { discordName: {} },
+                { discordName: "@alice", updatesFormat: ["Q1"] },
+              ],
+            },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const service = new TeamUpdateTrackerService(runtime);
+
+    await expect(
+      service.getTeamMembers("server-123", "discord"),
+    ).resolves.toEqual([
+      {
+        username: "@alice",
+        section: "Unassigned",
+        platform: "discord",
+        updatesFormat: ["Q1"],
+      },
+    ]);
+  });
+
+  it("ignores incomplete persisted schedules before returning check-in schedules", async () => {
+    const runtime = {
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          id: "memory-invalid",
+          content: {
+            type: "team-member-checkin-schedule",
+            schedule: { scheduleId: "schedule-1", serverId: "server-123" },
+          },
+        },
+        {
+          id: "memory-valid",
+          content: {
+            type: "team-member-checkin-schedule",
+            schedule: {
+              scheduleId: "schedule-2",
+              checkInType: "STANDUP",
+              channelId: "channel-1",
+              frequency: "WEEKLY",
+              checkInTime: "09:00",
+              createdAt: "2026-04-19T00:00:00.000Z",
+              serverId: "server-123",
+            },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    await expect(fetchCheckInSchedules(runtime)).resolves.toEqual([
+      {
+        scheduleId: "schedule-2",
+        checkInType: "STANDUP",
+        channelId: "channel-1",
+        frequency: "WEEKLY",
+        checkInTime: "09:00",
+        createdAt: "2026-04-19T00:00:00.000Z",
+        serverId: "server-123",
+      },
+    ]);
   });
 
   it("filters report channel configs and schedules by expected record type", () => {

@@ -17,6 +17,32 @@ export type CoordinatorMemory = {
 
 export type CoordinatorRecord = Record<string, unknown>;
 
+export type StoredCoordinatorTeamMember = {
+  section?: string;
+  tgName?: string;
+  discordName?: string;
+  format?: string;
+  serverId?: string;
+  serverName?: string;
+  createdAt?: string;
+  updatesFormat?: string[];
+};
+
+export type StoredCoordinatorSchedule = {
+  type?: string;
+  scheduleId: string;
+  teamMemberName?: string | null;
+  teamMemberUserName?: string;
+  checkInType: string;
+  channelId: string;
+  frequency: string;
+  checkInTime: string;
+  createdAt: string;
+  source?: string;
+  serverId?: string;
+  lastUpdated?: number;
+};
+
 export function isCoordinatorRecord(
   value: unknown,
 ): value is CoordinatorRecord {
@@ -53,6 +79,77 @@ export function getCoordinatorArray(
 ): unknown[] | undefined {
   const value = record?.[key];
   return Array.isArray(value) ? value : undefined;
+}
+
+function isOptionalString(value: unknown): value is string | undefined {
+  return value === undefined || typeof value === "string";
+}
+
+function isOptionalNullableString(
+  value: unknown,
+): value is string | null | undefined {
+  return value === undefined || value === null || typeof value === "string";
+}
+
+export function isCoordinatorStringArray(value: unknown): value is string[] {
+  return (
+    Array.isArray(value) && value.every((item) => typeof item === "string")
+  );
+}
+
+export function isStoredCoordinatorTeamMember(
+  value: unknown,
+): value is StoredCoordinatorTeamMember {
+  if (!isCoordinatorRecord(value)) {
+    return false;
+  }
+
+  const hasKnownTeamMemberField = [
+    "section",
+    "tgName",
+    "discordName",
+    "format",
+    "serverId",
+    "serverName",
+    "createdAt",
+    "updatesFormat",
+  ].some((key) => key in value);
+
+  if (!hasKnownTeamMemberField) {
+    return false;
+  }
+
+  return (
+    isOptionalString(value.section) &&
+    isOptionalString(value.tgName) &&
+    isOptionalString(value.discordName) &&
+    isOptionalString(value.format) &&
+    isOptionalString(value.serverId) &&
+    isOptionalString(value.serverName) &&
+    isOptionalString(value.createdAt) &&
+    (value.updatesFormat === undefined ||
+      isCoordinatorStringArray(value.updatesFormat))
+  );
+}
+
+export function isStoredCoordinatorSchedule(
+  value: unknown,
+): value is StoredCoordinatorSchedule {
+  return (
+    isCoordinatorRecord(value) &&
+    typeof value.scheduleId === "string" &&
+    typeof value.checkInType === "string" &&
+    typeof value.channelId === "string" &&
+    typeof value.frequency === "string" &&
+    typeof value.checkInTime === "string" &&
+    typeof value.createdAt === "string" &&
+    isOptionalString(value.type) &&
+    isOptionalNullableString(value.teamMemberName) &&
+    isOptionalString(value.teamMemberUserName) &&
+    isOptionalString(value.source) &&
+    isOptionalString(value.serverId) &&
+    (value.lastUpdated === undefined || typeof value.lastUpdated === "number")
+  );
 }
 
 export function getCoordinatorMemoryId(

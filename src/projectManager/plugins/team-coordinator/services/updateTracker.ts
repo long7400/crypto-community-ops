@@ -32,7 +32,8 @@ import {
   getCoordinatorSchedule,
   getCoordinatorString,
   getTeamMembersConfigMemory,
-  isCoordinatorRecord,
+  isStoredCoordinatorTeamMember,
+  type StoredCoordinatorTeamMember,
 } from "../storage";
 
 // Define interfaces for custom services
@@ -49,23 +50,11 @@ interface ExtendedCheckInSchedule extends CheckInSchedule {
   lastUpdated?: number;
 }
 
-interface StoredTeamMember {
-  section: string;
-  tgName?: string;
-  discordName?: string;
-  updatesFormat?: string[];
-  serverId: string;
-}
-
-function isStoredTeamMember(value: unknown): value is StoredTeamMember {
-  return isCoordinatorRecord(value);
-}
-
 function getStoredTeamMembers(
   config: CoordinatorRecord | undefined,
-): StoredTeamMember[] {
+): StoredCoordinatorTeamMember[] {
   const teamMembers = getCoordinatorArray(config, "teamMembers");
-  return teamMembers?.filter(isStoredTeamMember) ?? [];
+  return teamMembers?.filter(isStoredCoordinatorTeamMember) ?? [];
 }
 
 export class TeamUpdateTrackerService extends Service {

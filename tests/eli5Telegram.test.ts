@@ -19,11 +19,16 @@ import {
   type IAgentRuntime,
   initializeOnboarding,
   logger,
+  stringToUuid,
 } from "@elizaos/core";
 import { character, communityManager } from "../src/communityManager/index.ts";
 import timeoutUser from "../src/communityManager/plugins/communityManager/actions/timeout.ts";
 import { CommunityManagerService } from "../src/communityManager/plugins/communityManager/communityService.ts";
-import { initializeAllSystems, startTelegramOnboarding } from "../src/init.ts";
+import {
+  initializeAllSystems,
+  startOnboardingDM,
+  startTelegramOnboarding,
+} from "../src/init.ts";
 import {
   createTelegramRuntimeMock,
   createTelegramWorld,
@@ -196,6 +201,47 @@ describe("Eli5 Telegram E2E", () => {
       expect.objectContaining({
         id: "uuid:discord-guild-1",
         name: "Guild One",
+      }),
+    );
+  });
+
+  it("stores onboarding DMs with guild UUID aliases compatible with plugin-discord", async () => {
+    const ensureRoomExists = vi.fn().mockResolvedValue(undefined);
+    const createMemory = vi.fn().mockResolvedValue(undefined);
+    const getEntityById = vi.fn().mockResolvedValue({ id: "agent-id" });
+    const runtime = {
+      agentId: "agent-id",
+      ensureRoomExists,
+      createMemory,
+      getEntityById,
+      createEntity: vi.fn().mockResolvedValue(undefined),
+      character: { name: "Eli5" },
+    } as unknown as IAgentRuntime;
+    const send = vi.fn().mockResolvedValue({
+      channel: { id: "dm-channel-1" },
+      channelId: "dm-channel-1",
+    });
+    const guild = {
+      id: "discord-guild-1",
+      ownerId: "owner-1",
+      members: {
+        fetch: vi.fn().mockResolvedValue({
+          id: "owner-1",
+          user: { username: "ownerUser" },
+          send,
+        }),
+      },
+    } as any;
+
+    await startOnboardingDM(runtime, guild, "uuid:discord-guild-1" as any);
+
+    expect(ensureRoomExists).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "uuid:dm-channel-1",
+        channelId: "dm-channel-1",
+        messageServerId: stringToUuid("discord-guild-1"),
+        serverId: stringToUuid("discord-guild-1"),
+        worldId: "uuid:discord-guild-1",
       }),
     );
   });

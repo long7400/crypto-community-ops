@@ -14,7 +14,8 @@ import {
   type CoordinatorRecord,
   getCoordinatorArray,
   getCoordinatorConfig,
-  isCoordinatorRecord,
+  isStoredCoordinatorTeamMember,
+  type StoredCoordinatorTeamMember,
 } from "../storage";
 
 interface EntityPlatformMetadata {
@@ -29,26 +30,11 @@ interface EntityPlatformMetadata {
   };
 }
 
-interface TeamMember {
-  section: string;
-  tgName?: string;
-  discordName?: string;
-  format: string;
-  serverId: string;
-  serverName?: string;
-  createdAt?: string;
-  updatesFormat?: string[];
-}
-
-function isStoredTeamMember(value: unknown): value is TeamMember {
-  return isCoordinatorRecord(value);
-}
-
 function getStoredTeamMembers(
   config: CoordinatorRecord | undefined,
-): TeamMember[] {
+): StoredCoordinatorTeamMember[] {
   const teamMembers = getCoordinatorArray(config, "teamMembers");
-  return teamMembers?.filter(isStoredTeamMember) ?? [];
+  return teamMembers?.filter(isStoredCoordinatorTeamMember) ?? [];
 }
 
 /**
@@ -160,7 +146,7 @@ export const updatesFormatAction: Action = {
       );
 
       // Initialize an empty array for all team members across all servers
-      let allTeamMembers: TeamMember[] = [];
+      let allTeamMembers: StoredCoordinatorTeamMember[] = [];
 
       // Extract all team members from all configs
       teamMemberConfigs.forEach((config) => {

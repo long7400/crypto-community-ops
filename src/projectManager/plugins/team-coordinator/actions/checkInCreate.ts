@@ -16,7 +16,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { stringifyForLog, toErrorMessage } from "../logging";
-import { requireDiscordClient } from "../platform";
+import { requireDiscordClient, resolveRoomServerId } from "../platform";
 import {
   ensureCoordinatorRoom,
   getCheckInSchedulesRoomId,
@@ -94,11 +94,13 @@ export const recordCheckInAction: Action = {
         return false;
       }
 
-      const serverId = room.serverId;
+      const serverId = await resolveRoomServerId(runtime, room);
       if (!serverId) {
         logger.error("No server ID found for room");
         return false;
       }
+
+      state.data.serverId = serverId;
 
       // Check if user is an admin
       logger.info(
@@ -193,7 +195,9 @@ export const recordCheckInAction: Action = {
         return { success: false, error: "No room found for the message" };
       }
 
-      const serverId = room.serverId;
+      const serverId =
+        (state.data?.serverId as string | undefined) ??
+        (await resolveRoomServerId(runtime, room));
       if (!serverId) {
         logger.error("No server ID found for room");
         return { success: false, error: "No server ID found for room" };
