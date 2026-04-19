@@ -41,9 +41,11 @@ export const teamCoordinatorPlugin: Plugin = {
     try {
       logger.info("Initializing Team Coordinator plugin...");
 
-      await bootstrapTeamCoordinator(runtime, {});
+      bootstrapTeamCoordinator(runtime, {});
 
-      logger.info("Team Coordinator plugin initialized successfully");
+      logger.info(
+        "Team Coordinator plugin initialized; deferred task registration scheduled",
+      );
     } catch (error) {
       logger.error(
         `Failed to initialize Team Coordinator plugin: ${toErrorMessage(error)}`,

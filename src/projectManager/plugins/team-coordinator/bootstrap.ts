@@ -40,20 +40,20 @@ export async function registerTasksWithRetry(
 
   const errorMessage = tasksApiReady
     ? `${TEAM_COORDINATOR_TASK_REGISTRATION_FAILED}: Failed to register team coordinator tasks after all retries`
-    : "runtime.getTasks never became available; team coordinator tasks were not registered";
+    : `${TEAM_COORDINATOR_TASK_REGISTRATION_FAILED}: runtime.getTasks never became available; team coordinator tasks were not registered`;
 
   logger.error(errorMessage);
   throw new Error(errorMessage);
 }
 
-export async function bootstrapTeamCoordinator(
+export function bootstrapTeamCoordinator(
   runtime: IAgentRuntime,
   options: {
     registerTasks?: (runtime: IAgentRuntime) => Promise<void>;
     retries?: number;
     delayMs?: number;
   },
-): Promise<void> {
+): void {
   const initPromise = runtime.initPromise ?? Promise.resolve();
 
   void (async () => {

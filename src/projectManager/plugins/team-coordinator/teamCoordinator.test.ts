@@ -90,7 +90,7 @@ describe("team coordinator bootstrap", () => {
       "runtime.getTasks not yet available (attempt 2/2), will retry",
     );
     expect(errorSpy).toHaveBeenCalledWith(
-      "runtime.getTasks never became available; team coordinator tasks were not registered",
+      "TEAM_COORDINATOR_TASK_REGISTRATION_FAILED: runtime.getTasks never became available; team coordinator tasks were not registered",
     );
   });
 
@@ -143,7 +143,7 @@ describe("team coordinator bootstrap", () => {
     } as unknown as IAgentRuntime;
     const register = vi.fn().mockRejectedValue(new Error("boom"));
 
-    await bootstrapTeamCoordinator(runtime, {
+    bootstrapTeamCoordinator(runtime, {
       registerTasks: register,
       retries: 2,
       delayMs: 100,
@@ -171,11 +171,13 @@ describe("team coordinator bootstrap", () => {
 
     const register = vi.fn().mockResolvedValue(undefined);
 
-    await bootstrapTeamCoordinator(runtime, {
+    bootstrapTeamCoordinator(runtime, {
       registerTasks: register,
       retries: 1,
       delayMs: 1,
     });
+
+    await Promise.resolve();
 
     expect(runtime.registerService).not.toHaveBeenCalled();
     expect(register).toHaveBeenCalledTimes(1);
@@ -189,7 +191,7 @@ describe("team coordinator bootstrap", () => {
 
     const register = vi.fn().mockResolvedValue(undefined);
 
-    await bootstrapTeamCoordinator(runtime, {
+    bootstrapTeamCoordinator(runtime, {
       registerTasks: register,
       retries: 3,
       delayMs: 100,
@@ -216,17 +218,17 @@ describe("team coordinator bootstrap", () => {
     } as unknown as IAgentRuntime;
     const register = vi.fn().mockResolvedValue(undefined);
 
-    await bootstrapTeamCoordinator(runtime, {
+    bootstrapTeamCoordinator(runtime, {
       registerTasks: register,
       retries: 1,
       delayMs: 1,
     });
 
+    await Promise.resolve();
     expect(register).not.toHaveBeenCalled();
 
     resolveInit?.();
-    await Promise.resolve();
-    await Promise.resolve();
+    await vi.runAllTicks();
 
     expect(register).toHaveBeenCalledTimes(1);
   });
@@ -615,7 +617,15 @@ describe("team coordinator shared storage", () => {
       {
         content: {
           type: "team-member-checkin-schedule",
-          schedule: { scheduleId: "schedule-1", serverId: "server-123" },
+          schedule: {
+            scheduleId: "schedule-1",
+            checkInType: "STANDUP",
+            channelId: "channel-1",
+            frequency: "WEEKLY",
+            checkInTime: "09:00",
+            createdAt: "2026-04-19T00:00:00.000Z",
+            serverId: "server-123",
+          },
         },
       },
     ] as any);
@@ -630,6 +640,11 @@ describe("team coordinator shared storage", () => {
     if (!schedules[0]?.content) throw new Error("expected schedule content");
     expect(schedules[0].content.schedule).toEqual({
       scheduleId: "schedule-1",
+      checkInType: "STANDUP",
+      channelId: "channel-1",
+      frequency: "WEEKLY",
+      checkInTime: "09:00",
+      createdAt: "2026-04-19T00:00:00.000Z",
       serverId: "server-123",
     });
   });
@@ -645,7 +660,15 @@ describe("team coordinator shared storage", () => {
       {
         content: {
           type: "team-member-checkin-schedule",
-          schedule: { scheduleId: "schedule-1", serverId: "server-123" },
+          schedule: {
+            scheduleId: "schedule-1",
+            checkInType: "STANDUP",
+            channelId: "channel-1",
+            frequency: "WEEKLY",
+            checkInTime: "09:00",
+            createdAt: "2026-04-19T00:00:00.000Z",
+            serverId: "server-123",
+          },
         },
       },
     ] as any);
@@ -653,6 +676,11 @@ describe("team coordinator shared storage", () => {
     expect(schedules).toHaveLength(1);
     expect(schedules[0]?.content?.schedule).toEqual({
       scheduleId: "schedule-1",
+      checkInType: "STANDUP",
+      channelId: "channel-1",
+      frequency: "WEEKLY",
+      checkInTime: "09:00",
+      createdAt: "2026-04-19T00:00:00.000Z",
       serverId: "server-123",
     });
   });

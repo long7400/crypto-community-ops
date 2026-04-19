@@ -155,15 +155,13 @@ export function isStoredCoordinatorSchedule(
 export function getCoordinatorMemoryId(
   memory: CoordinatorMemory | undefined,
 ): UUID | undefined {
-  return typeof memory?.id === "string" ? (memory.id as UUID) : undefined;
+  return isUuidLike(memory?.id) ? memory.id : undefined;
 }
 
 export function getCoordinatorRoomId(
   memory: CoordinatorMemory | undefined,
 ): UUID | undefined {
-  return typeof memory?.roomId === "string"
-    ? (memory.roomId as UUID)
-    : undefined;
+  return isUuidLike(memory?.roomId) ? memory.roomId : undefined;
 }
 
 export function sanitizeServerId(serverId: string): string {
@@ -280,6 +278,15 @@ export function filterCheckInScheduleMemories(
   return memories.filter(
     (memory) =>
       memory.content?.type === "team-member-checkin-schedule" &&
-      !!getCoordinatorSchedule(memory),
+      isStoredCoordinatorSchedule(memory.content?.schedule),
+  );
+}
+
+function isUuidLike(value: unknown): value is UUID {
+  return (
+    typeof value === "string" &&
+    /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
+    )
   );
 }
