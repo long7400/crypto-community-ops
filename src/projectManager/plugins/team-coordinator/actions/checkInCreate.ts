@@ -509,6 +509,30 @@ export const recordCheckInAction: Action = {
         checkInConfig,
       );
 
+      if (!checkInConfig.updateChannelId) {
+        const missingUpdateChannel =
+          checkInConfig.channelForUpdates || "the requested updates channel";
+        await callback({
+          text: `❌ I couldn't find a Discord text channel matching "${missingUpdateChannel}" for updates. Please use one of the available channel names and try again.`,
+        });
+        return {
+          success: false,
+          error: `Unknown updates channel: ${missingUpdateChannel}`,
+        };
+      }
+
+      if (!checkInConfig.checkInChannelId) {
+        const missingCheckInChannel =
+          checkInConfig.channelForCheckIns || "the requested check-in channel";
+        await callback({
+          text: `❌ I couldn't find a Discord text channel matching "${missingCheckInChannel}" for check-ins. Please use one of the available channel names and try again.`,
+        });
+        return {
+          success: false,
+          error: `Unknown check-in channel: ${missingCheckInChannel}`,
+        };
+      }
+
       // TODO : after things are parsed now store the check in form for group
       // TODO : store the check in storage
 

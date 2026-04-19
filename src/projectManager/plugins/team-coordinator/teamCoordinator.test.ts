@@ -1,5 +1,6 @@
 import { createUniqueUuid, type IAgentRuntime, logger } from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { recordCheckInAction } from "./actions/checkInCreate";
 import { fetchCheckInSchedules } from "./actions/checkInList";
 import { bootstrapTeamCoordinator, registerTasksWithRetry } from "./bootstrap";
 import { stringifyForLog, toErrorMessage } from "./logging";
@@ -524,6 +525,31 @@ describe("team coordinator shared storage", () => {
     expect(memory?.id).toBe("memory-legacy");
   });
 
+  it("prefers readable legacy team member fallbacks over malformed records", async () => {
+    const runtime = {
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          id: "memory-malformed",
+          content: {
+            type: "store-team-members-memory",
+            config: "invalid-config",
+          },
+        },
+        {
+          id: "memory-legacy",
+          content: {
+            type: "store-team-members-memory",
+            config: { teamMembers: [{ discordName: "@alice" }] },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const memory = await getTeamMembersConfigMemory(runtime, "server-123");
+
+    expect(memory?.id).toBe("memory-legacy");
+  });
+
   it("filters malformed persisted team members before downstream consumers use string fields", async () => {
     const runtime = {
       agentId: "agent-id",
@@ -705,6 +731,30 @@ describe("team coordinator shared storage", () => {
       channelId: "legacy-channel",
     });
   });
+
+  it("prefers readable legacy report channel fallbacks over malformed records", () => {
+    const reportConfig = findReportChannelConfigForServer(
+      [
+        {
+          content: {
+            type: "report-channel-config",
+            config: "invalid-config",
+          },
+        },
+        {
+          content: {
+            type: "report-channel-config",
+            config: { channelId: "legacy-channel" },
+          },
+        },
+      ] as any,
+      "server-123",
+    );
+
+    expect(reportConfig?.content?.config).toEqual({
+      channelId: "legacy-channel",
+    });
+  });
 });
 
 describe("team coordinator interaction responses", () => {
@@ -712,11 +762,11 @@ describe("team coordinator interaction responses", () => {
     vi.restoreAllMocks();
   });
 
-  it("falls back to a runtime memory response when reply methods are unavailable", async () => {
-    const createMemory = vi.fn().mockResolvedValue(undefined);
+  it("falls back to a runtime event response when reply methods are unavailable", async () => {
+    const emitEvent = vi.fn().mockResolvedValue(undefined);
     const runtime = {
       agentId: "agent-id",
-      createMemory,
+      emitEvent,
     } as unknown as IAgentRuntime;
 
     const service = new CheckInService(runtime);
@@ -727,18 +777,103 @@ describe("team coordinator interaction responses", () => {
       true,
     );
 
-    expect(createMemory).toHaveBeenCalledTimes(1);
-    expect(createMemory).toHaveBeenCalledWith(
-      expect.objectContaining({
-        roomId: "room-123",
-        content: expect.objectContaining({
-          type: "discord-response",
-          text: "Ack",
-          ephemeral: true,
-          source: "team-coordinator",
-        }),
+    expect(emitEvent).toHaveBeenCalledTimes(1);
+    expect(emitEvent).toHaveBeenCalledWith("DISCORD_RESPONSE", {
+      type: "REPLY",
+      content: "Ack",
+      ephemeral: true,
+      interaction: { customId: "submit_checkin_schedule", roomId: "room-123" },
+    });
+  });
+});
+
+describe("team coordinator check-in creation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects unresolved channel names before storing report or schedule records", async () => {
+    const callback = vi.fn().mockResolvedValue(undefined);
+    const runtime = {
+      getRoom: vi.fn().mockResolvedValue({
+        id: "room-1",
+        serverId: "server-123",
+        source: "discord",
       }),
-      "messages",
+      getService: vi.fn().mockReturnValue({
+        client: {
+          guilds: {
+            cache: {
+              get: vi.fn().mockReturnValue({
+                name: "Guild",
+                channels: {
+                  fetch: vi.fn().mockResolvedValue(
+                    new Map([
+                      [
+                        "channel-1",
+                        {
+                          id: "channel-1",
+                          name: "general",
+                          type: 0,
+                          isTextBased: () => true,
+                          isDMBased: () => false,
+                        },
+                      ],
+                    ]),
+                  ),
+                },
+              }),
+            },
+          },
+        },
+      }),
+      useModel: vi
+        .fn()
+        .mockResolvedValueOnce("false")
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            channelForUpdates: "missing-updates",
+            checkInType: "STANDUP",
+            channelForCheckIns: "general",
+            frequency: "WEEKLY",
+            time: "09:00",
+          }),
+        ),
+      getMemories: vi.fn().mockResolvedValue([]),
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      ensureRoomExists: vi.fn().mockResolvedValue(undefined),
+      agentId: "agent-id",
+    } as unknown as IAgentRuntime;
+    const state = {
+      data: {
+        room: { id: "room-1", serverId: "server-123", source: "discord" },
+        serverId: "server-123",
+        isAdmin: true,
+      },
+    } as State;
+    const message = {
+      roomId: "room-1",
+      entityId: "user-1",
+      content: { text: "Record Check-in details", source: "discord" },
+    } as Memory;
+
+    const result = await recordCheckInAction.handler(
+      runtime,
+      message,
+      state,
+      {},
+      callback,
     );
+
+    expect(result.success).toBe(false);
+    expect(result.error).toContain("Unknown updates channel");
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining(
+          'couldn\'t find a Discord text channel matching "missing-updates"',
+        ),
+      }),
+    );
+    expect((runtime as any).createMemory).not.toHaveBeenCalled();
   });
 });

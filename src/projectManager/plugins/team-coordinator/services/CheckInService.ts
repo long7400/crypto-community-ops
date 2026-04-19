@@ -76,6 +76,13 @@ interface ExtendedInteraction {
   roomId?: UUID | string;
 }
 
+type DiscordResponsePayload = {
+  type: "REPLY";
+  content: string;
+  ephemeral: boolean;
+  interaction: ExtendedInteraction;
+};
+
 interface DiscordService extends Service {
   client: {
     users: {
@@ -123,26 +130,12 @@ export class CheckInService extends Service {
       `No direct interaction reply methods found for ${interaction.customId}; sending callback-style response`,
     );
 
-    await this.runtime.createMemory(
-      {
-        id: createUniqueUuid(
-          this.runtime,
-          `checkin-response-${interaction.customId}-${Date.now()}`,
-        ),
-        entityId: this.runtime.agentId,
-        agentId: this.runtime.agentId,
-        roomId:
-          (interaction.roomId as UUID | undefined) ?? this.runtime.agentId,
-        content: {
-          type: "discord-response",
-          text: content,
-          ephemeral,
-          source: "team-coordinator",
-        },
-        createdAt: Date.now(),
-      },
-      "messages",
-    );
+    await this.runtime.emitEvent("DISCORD_RESPONSE", {
+      type: "REPLY",
+      content,
+      ephemeral,
+      interaction,
+    } satisfies DiscordResponsePayload);
   }
 
   async start(): Promise<void> {

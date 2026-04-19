@@ -186,6 +186,40 @@ export function getCheckInSchedulesRoomId(runtime: IAgentRuntime): UUID {
   return createUniqueUuid(runtime, "check-in-schedules");
 }
 
+function findCoordinatorConfigMemoryForServer(
+  memories: CoordinatorMemory[],
+  type: string,
+  serverId: string,
+): CoordinatorMemory | undefined {
+  const matchingConfig = memories.find(
+    (memory) =>
+      memory.content?.type === type &&
+      getCoordinatorString(getCoordinatorConfig(memory), "serverId") ===
+        serverId,
+  );
+
+  if (matchingConfig) {
+    return matchingConfig;
+  }
+
+  const readableLegacyConfig = memories.find((memory) => {
+    if (memory.content?.type !== type) {
+      return false;
+    }
+
+    const config = getCoordinatorConfig(memory);
+    return !!config && !getCoordinatorString(config, "serverId");
+  });
+
+  if (readableLegacyConfig) {
+    return readableLegacyConfig;
+  }
+
+  return memories.find(
+    (memory) => memory.content?.type === type && !getCoordinatorConfig(memory),
+  );
+}
+
 export async function ensureCoordinatorRoom(
   runtime: IAgentRuntime,
   roomId: UUID,
@@ -209,21 +243,10 @@ export async function getTeamMembersConfigMemory(
     tableName: "messages",
   })) as CoordinatorMemory[];
 
-  const matchingConfig = memories.find(
-    (memory) =>
-      memory.content?.type === "store-team-members-memory" &&
-      getCoordinatorString(getCoordinatorConfig(memory), "serverId") ===
-        serverId,
-  );
-
-  if (matchingConfig) {
-    return matchingConfig;
-  }
-
-  return memories.find(
-    (memory) =>
-      memory.content?.type === "store-team-members-memory" &&
-      !getCoordinatorString(getCoordinatorConfig(memory), "serverId"),
+  return findCoordinatorConfigMemoryForServer(
+    memories,
+    "store-team-members-memory",
+    serverId,
   );
 }
 
@@ -254,21 +277,10 @@ export function findReportChannelConfigForServer(
   memories: CoordinatorMemory[],
   serverId: string,
 ): CoordinatorMemory | undefined {
-  const matchingConfig = memories.find(
-    (memory) =>
-      memory.content?.type === "report-channel-config" &&
-      getCoordinatorString(getCoordinatorConfig(memory), "serverId") ===
-        serverId,
-  );
-
-  if (matchingConfig) {
-    return matchingConfig;
-  }
-
-  return memories.find(
-    (memory) =>
-      memory.content?.type === "report-channel-config" &&
-      !getCoordinatorString(getCoordinatorConfig(memory), "serverId"),
+  return findCoordinatorConfigMemoryForServer(
+    memories,
+    "report-channel-config",
+    serverId,
   );
 }
 

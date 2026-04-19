@@ -30,27 +30,23 @@ Changes can be parked（暫存）— temporarily moved out of `openspec/changes/
 
 ## Stack
 
-- Bun 1.3.12 + Node 22.22.2; TypeScript 5.8.2 with `strict` + `moduleResolution: "Bundler"`
-- ElizaOS 1.0.19 multi-agent runtime; bundled with tsup 8.4.0 via `tsconfig.build.json`
+- Bun 1.3.12 + Node v25.9.0; TypeScript 5.8.2 with `strict` + `moduleResolution: "Bundler"`
+- ElizaOS CLI/runtime 1.7.2; bundled with tsup 8.4.0 from `src/index.ts`
+- React 18.3.1 + Tailwind CSS 3.4.17 + Radix UI tabs/slot are installed, but the app entry is CLI/server-first
 - Tests use Vitest plus `elizaos test`; lint/format is Prettier 3.5.3 writing `./src`
-- Config surface includes `.cursorrules`, `openspec/`, `.opencode/`, and Tailwind/PostCSS config files
 
 ## Structure
 
 - `src/index.ts` loads `../.env`, filters enabled agents, and exports `project`
 - `src/{communityManager,devRel,liaison,projectManager,socialMediaManager}/` hold agent definitions; read local `spec.md` before behavior edits
-- `src/projectManager/plugins/team-coordinator/` contains check-ins, team members, reports, tasks, and tracker services
-- `src/loadTest/` contains harness + colocated tests; `tests/*.test.ts` covers higher-level agent behavior
-- `.opencode/` stores AI workflow config/memory; `openspec/{specs,changes}` stores Spectra specs and proposals
+- `src/projectManager/plugins/team-coordinator/` is the heaviest subsystem: actions, services, forms, storage, tasks, and tests
+- `src/loadTest/` contains the harness, colocated tests, and generated logs; `tests/*.test.ts` covers higher-level agent behavior
+- `.opencode/` and `.beads/` store AI workflow state and task tracking; no `.github/workflows/*`, `.cursorrules`, or `.github/copilot-instructions.md` were detected
 
-## Commands (validated 2026-04-16)
+## Commands (validated 2026-04-19)
 
-- `bun run build` ✅ works; tsup warns about `./services/checkInService` casing vs `CheckInService.ts`
-- `bun run lint` ✅ works; runs `prettier --write ./src` and can modify tracked files
-- `bunx tsc --noEmit` ❌ fails in `src/loadTest/__tests__/service.test.ts`, `src/plugins.test.ts`, `src/projectManager/plugins/team-coordinator/actions/teamMemberUpdate.ts`, and `src/projectManager/plugins/team-coordinator/actions/updateFormat.ts`
-- `bun run test` ❌ fails after TS issues and runtime `this[writeSym] is not a function`
-- `bun run start` ❌ fails on TS directory imports from `src/index.ts`, then SQL/PGlite migration aborts
-- `bun run dev` ❌ loads `dist/index.js`, filters to Jimmy without platform vars, then hits SQL/PGlite migration abort in this environment
+- `bun run build` / `bun run lint` / `bunx tsc --noEmit` / `bun run test` ❌ all fail from `src/projectManager/plugins/team-coordinator/services/updateTracker.ts:846`
+- `bun run dev` / `bun run start` ⚠️ can serve `:3000` while project import fails and runtime drops to `agentCount=0`
 
 ## Code example
 
@@ -60,11 +56,6 @@ const usesTelegram = agent.character.plugins?.includes("@elizaos/plugin-telegram
 if (!usesDiscord && !usesTelegram) return true;
 ```
 
-## Testing
-
-- `tests/*.test.ts` covers named agents; `src/plugins.test.ts` checks plugin/env loading; `src/loadTest/__tests__/*.test.ts` covers load-test service behavior
-- `elizaos test` boots runtime pieces; it is not a pure unit-test pass
-
 ## Boundaries
 
 - Always: prefer Bun scripts, preserve `src/index.ts` agent exports, and read the relevant `spec.md` before changing agent behavior
@@ -73,5 +64,6 @@ if (!usesDiscord && !usesTelegram) return true;
 
 ## Gotchas
 
-- `src/index.ts:2` reads `../.env`; `bun.lock` is the lockfile though `README.md` still says `bun.lockb`
-- Import casing around `CheckInService.ts` matters on case-sensitive systems; no `.github/workflows/*` or `.github/copilot-instructions.md` detected
+- `src/index.ts:2` reads `../.env`, not `./.env`; agents without Discord/Telegram secrets are filtered out before export
+- `src/projectManager/plugins/team-coordinator/services/updateTracker.ts` currently has a broken `try/catch` block near line 846, which blocks build/lint/typecheck/test
+- `dev`/`start` can look healthy while project import already failed
