@@ -1,11 +1,20 @@
-import { createUniqueUuid, type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  createUniqueUuid,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { recordCheckInAction } from "./actions/checkInCreate";
+import { fetchCheckInSchedules } from "./actions/checkInList";
 import { bootstrapTeamCoordinator, registerTasksWithRetry } from "./bootstrap";
 import { stringifyForLog, toErrorMessage } from "./logging";
 import {
   getDiscordClient,
   getTelegramBot,
   requireDiscordClient,
+  resolveRoomServerId,
 } from "./platform";
 import { CheckInService } from "./services/CheckInService";
 import { TeamUpdateTrackerService } from "./services/updateTracker";
@@ -55,7 +64,7 @@ describe("team coordinator bootstrap", () => {
     expect(register).toHaveBeenCalledTimes(1);
   });
 
-  it("logs targeted readiness diagnostics when runtime.getTasks is unavailable", async () => {
+  it("logs targeted readiness diagnostics and rejects when runtime.getTasks is unavailable", async () => {
     const debugSpy = vi
       .spyOn(logger, "debug")
       .mockImplementation(() => undefined);
@@ -72,10 +81,13 @@ describe("team coordinator bootstrap", () => {
       retries: 2,
       delayMs: 100,
     });
+    const rejection = expect(promise).rejects.toThrow(
+      "runtime.getTasks never became available; team coordinator tasks were not registered",
+    );
 
     await vi.advanceTimersByTimeAsync(100);
     await vi.advanceTimersByTimeAsync(100);
-    await promise;
+    await rejection;
 
     expect(register).not.toHaveBeenCalled();
     expect(debugSpy).toHaveBeenCalledWith(
@@ -85,11 +97,11 @@ describe("team coordinator bootstrap", () => {
       "runtime.getTasks not yet available (attempt 2/2), will retry",
     );
     expect(errorSpy).toHaveBeenCalledWith(
-      "runtime.getTasks never became available; team coordinator tasks were not registered",
+      "TEAM_COORDINATOR_TASK_REGISTRATION_FAILED: runtime.getTasks never became available; team coordinator tasks were not registered",
     );
   });
 
-  it("keeps terminal registration failure logging when task registration throws after readiness", async () => {
+  it("keeps terminal registration failure logging and rejects when task registration throws after readiness", async () => {
     const warnSpy = vi
       .spyOn(logger, "warn")
       .mockImplementation(() => undefined);
@@ -106,9 +118,12 @@ describe("team coordinator bootstrap", () => {
       retries: 2,
       delayMs: 100,
     });
+    const rejection = expect(promise).rejects.toThrow(
+      "TEAM_COORDINATOR_TASK_REGISTRATION_FAILED: Failed to register team coordinator tasks after all retries",
+    );
 
     await vi.advanceTimersByTimeAsync(100);
-    await promise;
+    await rejection;
 
     expect(register).toHaveBeenCalledTimes(2);
     expect(warnSpy).toHaveBeenCalledWith(
@@ -135,7 +150,7 @@ describe("team coordinator bootstrap", () => {
     } as unknown as IAgentRuntime;
     const register = vi.fn().mockRejectedValue(new Error("boom"));
 
-    await bootstrapTeamCoordinator(runtime, {
+    bootstrapTeamCoordinator(runtime, {
       registerTasks: register,
       retries: 2,
       delayMs: 100,
@@ -163,11 +178,13 @@ describe("team coordinator bootstrap", () => {
 
     const register = vi.fn().mockResolvedValue(undefined);
 
-    await bootstrapTeamCoordinator(runtime, {
+    bootstrapTeamCoordinator(runtime, {
       registerTasks: register,
       retries: 1,
       delayMs: 1,
     });
+
+    await Promise.resolve();
 
     expect(runtime.registerService).not.toHaveBeenCalled();
     expect(register).toHaveBeenCalledTimes(1);
@@ -181,7 +198,7 @@ describe("team coordinator bootstrap", () => {
 
     const register = vi.fn().mockResolvedValue(undefined);
 
-    await bootstrapTeamCoordinator(runtime, {
+    bootstrapTeamCoordinator(runtime, {
       registerTasks: register,
       retries: 3,
       delayMs: 100,
@@ -195,6 +212,32 @@ describe("team coordinator bootstrap", () => {
 
     expect(register).toHaveBeenCalledTimes(1);
     expect(runtime.registerService).not.toHaveBeenCalled();
+  });
+
+  it("waits for runtime initialization before starting deferred task registration", async () => {
+    let resolveInit: (() => void) | undefined;
+    const initPromise = new Promise<void>((resolve) => {
+      resolveInit = resolve;
+    });
+    const runtime = {
+      initPromise,
+      getTasks: vi.fn().mockResolvedValue([]),
+    } as unknown as IAgentRuntime;
+    const register = vi.fn().mockResolvedValue(undefined);
+
+    bootstrapTeamCoordinator(runtime, {
+      registerTasks: register,
+      retries: 1,
+      delayMs: 1,
+    });
+
+    await Promise.resolve();
+    expect(register).not.toHaveBeenCalled();
+
+    resolveInit?.();
+    await vi.runAllTicks();
+
+    expect(register).toHaveBeenCalledTimes(1);
   });
 
   it("waits for the runtime-managed tracker service before wiring task execution", async () => {
@@ -263,7 +306,7 @@ describe("team coordinator platform readiness", () => {
     vi.restoreAllMocks();
   });
 
-  it("returns a validated discord client without exploratory probes", async () => {
+  it("returns a validated discord client without exploratory probes", () => {
     const fetchSpy = vi.fn();
     const runtime = {
       getService: vi
@@ -271,7 +314,7 @@ describe("team coordinator platform readiness", () => {
         .mockReturnValue({ client: { users: { fetch: fetchSpy } } }),
     } as unknown as IAgentRuntime;
 
-    const result = await getDiscordClient(runtime);
+    const result = getDiscordClient(runtime);
 
     expect(result.ok).toBe(true);
     if (!result.ok) throw new Error("expected discord client");
@@ -279,26 +322,100 @@ describe("team coordinator platform readiness", () => {
     expect(fetchSpy).not.toHaveBeenCalled();
   });
 
-  it("returns a consistent failure when telegram bot is unavailable", async () => {
+  it("returns a consistent failure when telegram bot is unavailable", () => {
     const runtime = {
       getService: vi.fn().mockReturnValue(undefined),
     } as unknown as IAgentRuntime;
 
-    const result = await getTelegramBot(runtime);
+    const result = getTelegramBot(runtime);
 
     expect(result.ok).toBe(false);
     if (result.ok) throw new Error("expected telegram failure");
     expect(result.error).toContain("Telegram");
   });
 
-  it("throws the shared Discord availability error through the platform requirement helper", async () => {
+  it("throws the shared Discord availability error through the platform requirement helper", () => {
     const runtime = {
       getService: vi.fn().mockReturnValue(undefined),
     } as unknown as IAgentRuntime;
 
-    await expect(requireDiscordClient(runtime)).rejects.toThrow(
+    expect(() => requireDiscordClient(runtime)).toThrow(
       "Discord service not found",
     );
+  });
+
+  it("resolves raw discord server ids from rooms that only expose UUID aliases", async () => {
+    const fetchSpy = vi.fn().mockResolvedValue({ guildId: "discord-guild-1" });
+    const runtime = {
+      getService: vi
+        .fn()
+        .mockReturnValue({ client: { channels: { fetch: fetchSpy } } }),
+    } as unknown as IAgentRuntime;
+
+    await expect(
+      resolveRoomServerId(runtime, {
+        source: "discord",
+        serverId: "550e8400-e29b-41d4-a716-446655440000",
+        channelId: "channel-123",
+      }),
+    ).resolves.toBe("discord-guild-1");
+  });
+
+  it("checks tracker platform readiness without awaiting synchronous helper results", async () => {
+    vi.resetModules();
+    vi.spyOn(logger, "info").mockImplementation(() => undefined);
+    vi.spyOn(logger, "warn").mockImplementation(() => undefined);
+
+    const discordResult = {
+      ok: false as const,
+      error: "Discord service not found",
+    };
+    const telegramResult = {
+      ok: false as const,
+      error: "Telegram service not found",
+    };
+
+    Object.defineProperty(discordResult, "then", {
+      get() {
+        throw new Error("discord readiness result was awaited");
+      },
+    });
+    Object.defineProperty(telegramResult, "then", {
+      get() {
+        throw new Error("telegram readiness result was awaited");
+      },
+    });
+
+    const getDiscordClientMock = vi.fn(() => discordResult);
+    const getTelegramBotMock = vi.fn(() => telegramResult);
+
+    vi.doMock("./platform", async () => {
+      const actual =
+        await vi.importActual<typeof import("./platform")>("./platform");
+      return {
+        ...actual,
+        getDiscordClient: getDiscordClientMock,
+        getTelegramBot: getTelegramBotMock,
+      };
+    });
+
+    try {
+      const { TeamUpdateTrackerService: FreshTeamUpdateTrackerService } =
+        await import("./services/updateTracker");
+      const runtime = {
+        getService: vi.fn().mockReturnValue(undefined),
+      } as unknown as IAgentRuntime;
+
+      await expect(
+        new FreshTeamUpdateTrackerService(runtime).checkInServiceJob(),
+      ).resolves.toBeUndefined();
+
+      expect(getDiscordClientMock).toHaveBeenCalledWith(runtime);
+      expect(getTelegramBotMock).toHaveBeenCalledWith(runtime);
+    } finally {
+      vi.doUnmock("./platform");
+      vi.resetModules();
+    }
   });
 });
 
@@ -368,6 +485,188 @@ describe("team coordinator shared storage", () => {
     });
   });
 
+  it("ignores malformed team member config payloads when finding a server match", async () => {
+    const runtime = {
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          id: "memory-bad",
+          content: {
+            type: "store-team-members-memory",
+            config: "invalid-config",
+          },
+        },
+        {
+          id: "memory-good",
+          content: {
+            type: "store-team-members-memory",
+            config: {
+              serverId: "server-123",
+              teamMembers: [{ discordName: "@alice" }],
+            },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const memory = await getTeamMembersConfigMemory(runtime, "server-123");
+
+    expect(memory?.id).toBe("memory-good");
+  });
+
+  it("preserves legacy team member fallback when config payloads are unreadable", async () => {
+    const runtime = {
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          id: "memory-legacy",
+          content: {
+            type: "store-team-members-memory",
+            config: "invalid-config",
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const memory = await getTeamMembersConfigMemory(runtime, "server-123");
+
+    expect(memory?.id).toBe("memory-legacy");
+  });
+
+  it("prefers readable legacy team member fallbacks over malformed records", async () => {
+    const runtime = {
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          id: "memory-malformed",
+          content: {
+            type: "store-team-members-memory",
+            config: "invalid-config",
+          },
+        },
+        {
+          id: "memory-legacy",
+          content: {
+            type: "store-team-members-memory",
+            config: { teamMembers: [{ discordName: "@alice" }] },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const memory = await getTeamMembersConfigMemory(runtime, "server-123");
+
+    expect(memory?.id).toBe("memory-legacy");
+  });
+
+  it("filters malformed persisted team members before downstream consumers use string fields", async () => {
+    const runtime = {
+      agentId: "agent-id",
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          content: {
+            type: "store-team-members-memory",
+            config: {
+              serverId: "server-123",
+              teamMembers: [
+                { discordName: {} },
+                { discordName: "@alice", updatesFormat: ["Q1"] },
+              ],
+            },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const service = new TeamUpdateTrackerService(runtime);
+
+    await expect(
+      service.getTeamMembers("server-123", "discord"),
+    ).resolves.toEqual([
+      {
+        username: "@alice",
+        section: "Unassigned",
+        platform: "discord",
+        updatesFormat: ["Q1"],
+      },
+    ]);
+  });
+
+  it("prefers Telegram usernames when formatting Telegram team members", async () => {
+    const runtime = {
+      agentId: "agent-id",
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          content: {
+            type: "store-team-members-memory",
+            config: {
+              serverId: "server-123",
+              teamMembers: [
+                {
+                  section: "DevRel",
+                  tgName: "@alice_tg",
+                  discordName: "@alice_discord",
+                  updatesFormat: ["Q1"],
+                },
+              ],
+            },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const service = new TeamUpdateTrackerService(runtime);
+
+    await expect(
+      service.getTeamMembers("server-123", "telegram"),
+    ).resolves.toEqual([
+      {
+        username: "@alice_tg",
+        section: "DevRel",
+        platform: "telegram",
+        updatesFormat: ["Q1"],
+      },
+    ]);
+  });
+
+  it("ignores incomplete persisted schedules before returning check-in schedules", async () => {
+    const runtime = {
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          id: "memory-invalid",
+          content: {
+            type: "team-member-checkin-schedule",
+            schedule: { scheduleId: "schedule-1", serverId: "server-123" },
+          },
+        },
+        {
+          id: "memory-valid",
+          content: {
+            type: "team-member-checkin-schedule",
+            schedule: {
+              scheduleId: "schedule-2",
+              checkInType: "STANDUP",
+              channelId: "channel-1",
+              frequency: "WEEKLY",
+              checkInTime: "09:00",
+              createdAt: "2026-04-19T00:00:00.000Z",
+              serverId: "server-123",
+            },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    await expect(fetchCheckInSchedules(runtime)).resolves.toEqual([
+      {
+        scheduleId: "schedule-2",
+        checkInType: "STANDUP",
+        channelId: "channel-1",
+        frequency: "WEEKLY",
+        checkInTime: "09:00",
+        createdAt: "2026-04-19T00:00:00.000Z",
+        serverId: "server-123",
+      },
+    ]);
+  });
+
   it("filters report channel configs and schedules by expected record type", () => {
     const reportConfig = findReportChannelConfigForServer(
       [
@@ -387,7 +686,15 @@ describe("team coordinator shared storage", () => {
       {
         content: {
           type: "team-member-checkin-schedule",
-          schedule: { scheduleId: "schedule-1", serverId: "server-123" },
+          schedule: {
+            scheduleId: "schedule-1",
+            checkInType: "STANDUP",
+            channelId: "channel-1",
+            frequency: "WEEKLY",
+            checkInTime: "09:00",
+            createdAt: "2026-04-19T00:00:00.000Z",
+            serverId: "server-123",
+          },
         },
       },
     ] as any);
@@ -402,6 +709,47 @@ describe("team coordinator shared storage", () => {
     if (!schedules[0]?.content) throw new Error("expected schedule content");
     expect(schedules[0].content.schedule).toEqual({
       scheduleId: "schedule-1",
+      checkInType: "STANDUP",
+      channelId: "channel-1",
+      frequency: "WEEKLY",
+      checkInTime: "09:00",
+      createdAt: "2026-04-19T00:00:00.000Z",
+      serverId: "server-123",
+    });
+  });
+
+  it("ignores malformed schedule payloads when filtering check-in schedules", () => {
+    const schedules = filterCheckInScheduleMemories([
+      {
+        content: {
+          type: "team-member-checkin-schedule",
+          schedule: "invalid-schedule",
+        },
+      },
+      {
+        content: {
+          type: "team-member-checkin-schedule",
+          schedule: {
+            scheduleId: "schedule-1",
+            checkInType: "STANDUP",
+            channelId: "channel-1",
+            frequency: "WEEKLY",
+            checkInTime: "09:00",
+            createdAt: "2026-04-19T00:00:00.000Z",
+            serverId: "server-123",
+          },
+        },
+      },
+    ] as any);
+
+    expect(schedules).toHaveLength(1);
+    expect(schedules[0]?.content?.schedule).toEqual({
+      scheduleId: "schedule-1",
+      checkInType: "STANDUP",
+      channelId: "channel-1",
+      frequency: "WEEKLY",
+      checkInTime: "09:00",
+      createdAt: "2026-04-19T00:00:00.000Z",
       serverId: "server-123",
     });
   });
@@ -426,6 +774,30 @@ describe("team coordinator shared storage", () => {
       channelId: "legacy-channel",
     });
   });
+
+  it("prefers readable legacy report channel fallbacks over malformed records", () => {
+    const reportConfig = findReportChannelConfigForServer(
+      [
+        {
+          content: {
+            type: "report-channel-config",
+            config: "invalid-config",
+          },
+        },
+        {
+          content: {
+            type: "report-channel-config",
+            config: { channelId: "legacy-channel" },
+          },
+        },
+      ] as any,
+      "server-123",
+    );
+
+    expect(reportConfig?.content?.config).toEqual({
+      channelId: "legacy-channel",
+    });
+  });
 });
 
 describe("team coordinator interaction responses", () => {
@@ -433,33 +805,120 @@ describe("team coordinator interaction responses", () => {
     vi.restoreAllMocks();
   });
 
-  it("falls back to a runtime memory response when reply methods are unavailable", async () => {
-    const createMemory = vi.fn().mockResolvedValue(undefined);
+  it("uses interaction callback responses when reply methods are unavailable", async () => {
+    const emitEvent = vi.fn().mockResolvedValue(undefined);
+    const callback = vi.fn().mockResolvedValue(undefined);
     const runtime = {
       agentId: "agent-id",
-      createMemory,
+      emitEvent,
     } as unknown as IAgentRuntime;
 
     const service = new CheckInService(runtime);
 
     await (service as any).respondToInteraction(
-      { customId: "submit_checkin_schedule", roomId: "room-123" },
+      {
+        customId: "submit_checkin_schedule",
+        roomId: "room-123",
+        callback,
+      },
       "Ack",
       true,
     );
 
-    expect(createMemory).toHaveBeenCalledTimes(1);
-    expect(createMemory).toHaveBeenCalledWith(
-      expect.objectContaining({
-        roomId: "room-123",
-        content: expect.objectContaining({
-          type: "discord-response",
-          text: "Ack",
-          ephemeral: true,
-          source: "team-coordinator",
-        }),
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith({ text: "Ack" });
+    expect(emitEvent).not.toHaveBeenCalled();
+  });
+});
+
+describe("team coordinator check-in creation", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it("rejects unresolved channel names before storing report or schedule records", async () => {
+    const callback = vi.fn().mockResolvedValue(undefined);
+    const runtime = {
+      getRoom: vi.fn().mockResolvedValue({
+        id: "room-1",
+        serverId: "server-123",
+        source: "discord",
       }),
-      "messages",
+      getService: vi.fn().mockReturnValue({
+        client: {
+          guilds: {
+            cache: {
+              get: vi.fn().mockReturnValue({
+                name: "Guild",
+                channels: {
+                  fetch: vi.fn().mockResolvedValue(
+                    new Map([
+                      [
+                        "channel-1",
+                        {
+                          id: "channel-1",
+                          name: "general",
+                          type: 0,
+                          isTextBased: () => true,
+                          isDMBased: () => false,
+                        },
+                      ],
+                    ]),
+                  ),
+                },
+              }),
+            },
+          },
+        },
+      }),
+      useModel: vi
+        .fn()
+        .mockResolvedValueOnce("false")
+        .mockResolvedValueOnce(
+          JSON.stringify({
+            channelForUpdates: "missing-updates",
+            checkInType: "STANDUP",
+            channelForCheckIns: "general",
+            frequency: "WEEKLY",
+            time: "09:00",
+          }),
+        ),
+      getMemories: vi.fn().mockResolvedValue([]),
+      createMemory: vi.fn().mockResolvedValue(undefined),
+      ensureRoomExists: vi.fn().mockResolvedValue(undefined),
+      agentId: "agent-id",
+    } as unknown as IAgentRuntime;
+    const state = {
+      data: {
+        room: { id: "room-1", serverId: "server-123", source: "discord" },
+        serverId: "server-123",
+        isAdmin: true,
+      },
+    } as unknown as State;
+    const message = {
+      roomId: "room-1",
+      entityId: "user-1",
+      content: { text: "Record Check-in details", source: "discord" },
+    } as unknown as Memory;
+
+    const result = await recordCheckInAction.handler(
+      runtime,
+      message,
+      state,
+      {},
+      callback,
     );
+
+    expect(result).toBeDefined();
+    expect(result?.success).toBe(false);
+    expect(result?.error).toContain("Unknown updates channel");
+    expect(callback).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: expect.stringContaining(
+          'couldn\'t find a Discord text channel matching "missing-updates"',
+        ),
+      }),
+    );
+    expect((runtime as any).createMemory).not.toHaveBeenCalled();
   });
 });

@@ -1,4 +1,4 @@
-import type { IAgentRuntime, Service } from "@elizaos/core";
+import type { IAgentRuntime, Room, Service } from "@elizaos/core";
 
 export interface DiscordClientLike {
   users?: {
@@ -30,9 +30,9 @@ type ReadinessResult<T> =
   | { ok: true; client: T }
   | { ok: false; error: string };
 
-export async function getDiscordClient(
+export function getDiscordClient(
   runtime: IAgentRuntime,
-): Promise<ReadinessResult<DiscordClientLike>> {
+): ReadinessResult<DiscordClientLike> {
   const discordService = runtime.getService("discord") as
     | DiscordServiceLike
     | undefined;
@@ -48,10 +48,10 @@ export async function getDiscordClient(
   return { ok: true, client: discordService.client };
 }
 
-export async function requireDiscordClient(
+export function requireDiscordClient(
   runtime: IAgentRuntime,
-): Promise<DiscordClientLike> {
-  const result = await getDiscordClient(runtime);
+): DiscordClientLike {
+  const result = getDiscordClient(runtime);
   if (!result.ok) {
     throw new Error(result.error);
   }
@@ -59,9 +59,9 @@ export async function requireDiscordClient(
   return result.client;
 }
 
-export async function getTelegramBot(
+export function getTelegramBot(
   runtime: IAgentRuntime,
-): Promise<ReadinessResult<TelegramBotLike>> {
+): ReadinessResult<TelegramBotLike> {
   const telegramService = runtime.getService("telegram") as
     | TelegramServiceLike
     | undefined;
@@ -75,4 +75,51 @@ export async function getTelegramBot(
   }
 
   return { ok: true, client: telegramService.bot };
+}
+
+function isUuidLike(value: string): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+    value,
+  );
+}
+
+type DiscordChannelLike = {
+  guild?: { id?: string };
+  guildId?: string;
+};
+
+export async function resolveRoomServerId(
+  runtime: IAgentRuntime,
+  room: Pick<Room, "source" | "serverId" | "channelId"> | undefined,
+): Promise<string | undefined> {
+  if (!room?.serverId) {
+    return undefined;
+  }
+
+  if (room.source !== "discord" || !isUuidLike(room.serverId)) {
+    return room.serverId;
+  }
+
+  const discordResult = getDiscordClient(runtime);
+  if (
+    !discordResult.ok ||
+    !room.channelId ||
+    !discordResult.client.channels?.fetch
+  ) {
+    return room.serverId;
+  }
+
+  try {
+    const channel = (await discordResult.client.channels.fetch(
+      room.channelId,
+    )) as DiscordChannelLike | null;
+
+    if (!channel || typeof channel !== "object") {
+      return room.serverId;
+    }
+
+    return channel.guildId || channel.guild?.id || room.serverId;
+  } catch {
+    return room.serverId;
+  }
 }

@@ -12,10 +12,18 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { stringifyForLog, toErrorMessage } from "../logging";
+import { resolveRoomServerId } from "../platform";
 import {
+  type CoordinatorRecord,
   ensureCoordinatorRoom,
+  getCoordinatorArray,
+  getCoordinatorConfig,
+  getCoordinatorMemoryId,
+  getCoordinatorRoomId,
   getTeamMembersConfigMemory,
   getTeamMembersRoomId,
+  isStoredCoordinatorTeamMember,
+  type StoredCoordinatorTeamMember,
 } from "../storage";
 
 interface TeamMember {
@@ -35,6 +43,13 @@ interface TeamMemberConfig {
   serverId: string;
 }
 
+function getStoredTeamMembers(
+  config: CoordinatorRecord | undefined,
+): StoredCoordinatorTeamMember[] {
+  const teamMembers = getCoordinatorArray(config, "teamMembers");
+  return teamMembers?.filter(isStoredCoordinatorTeamMember) ?? [];
+}
+
 /**
  * Fetches team members for a specific server from memory
  * @param runtime The agent runtime
@@ -44,7 +59,7 @@ interface TeamMemberConfig {
 async function fetchTeamMembersForServer(
   runtime: IAgentRuntime,
   serverId: string,
-): Promise<TeamMember[]> {
+): Promise<StoredCoordinatorTeamMember[]> {
   try {
     logger.info(`Fetching team members for server ${serverId}`);
 
@@ -53,10 +68,9 @@ async function fetchTeamMembersForServer(
       `store-team-members-${serverId.replace(/[^a-zA-Z0-9]/g, "")}`,
     );
     const existingConfig = await getTeamMembersConfigMemory(runtime, serverId);
-    const teamMembers =
-      (existingConfig?.content?.config?.teamMembers as
-        | TeamMember[]
-        | undefined) || [];
+    const teamMembers = getStoredTeamMembers(
+      getCoordinatorConfig(existingConfig),
+    );
 
     // Log for debugging
     logger.info(
@@ -81,7 +95,7 @@ async function fetchTeamMembersForServer(
  * @returns True if the member already exists, false otherwise
  */
 function isDuplicateTeamMember(
-  existingMembers: TeamMember[],
+  existingMembers: StoredCoordinatorTeamMember[],
   newMember: TeamMember,
 ): boolean {
   return existingMembers.some((member) => {
@@ -137,7 +151,7 @@ export const addTeamMemberAction: Action = {
         return false;
       }
 
-      const serverId = room.serverId;
+      const serverId = await resolveRoomServerId(runtime, room);
       if (!serverId) {
         logger.error("No server ID found for room");
         return false;
@@ -427,8 +441,8 @@ export const addTeamMemberAction: Action = {
           );
 
           // Fetch existing team members from the config
-          const configData = existingConfig.content?.config as TeamMemberConfig;
-          const existingTeamMembers = configData?.teamMembers || [];
+          const configData = getCoordinatorConfig(existingConfig);
+          const existingTeamMembers = getStoredTeamMembers(configData);
           logger.info(
             `Found ${existingTeamMembers.length} existing team members`,
           );
@@ -446,7 +460,7 @@ export const addTeamMemberAction: Action = {
 
             // Format team members into a readable list
             const teamMembersList = existingTeamMembers
-              .map((member: TeamMember, index: number) => {
+              .map((member, index: number) => {
                 const section = member.section || "Unassigned";
                 const format = member.format || "Text";
 
@@ -483,22 +497,29 @@ export const addTeamMemberAction: Action = {
 
             // Update the config with the new team members
             const updatedConfig = {
-              ...(existingConfig.content?.config as TeamMemberConfig),
+              ...(configData ?? {}),
               teamMembers: updatedTeamMembers,
               lastUpdated: Date.now(),
             };
 
             // Update the memory with the new config
-            if (existingConfig.id) {
+            const existingConfigId = getCoordinatorMemoryId(existingConfig);
+            const existingConfigRoomId = getCoordinatorRoomId(existingConfig);
+
+            if (existingConfigId && existingConfigRoomId) {
               await runtime.updateMemory({
                 ...(existingConfig as Partial<Memory>),
-                id: existingConfig.id as UUID,
-                roomId: existingConfig.roomId as UUID,
+                id: existingConfigId,
+                roomId: existingConfigRoomId,
                 content: {
-                  ...existingConfig.content,
+                  ...(existingConfig.content ?? {}),
                   config: updatedConfig,
                 },
               });
+            } else {
+              logger.warn(
+                "Existing team members config is missing id or roomId; skipping memory update",
+              );
             }
 
             logger.info(
@@ -507,7 +528,7 @@ export const addTeamMemberAction: Action = {
 
             // Format the newly added team members for the response
             const newMembersList = newTeamMembers
-              .map((member: TeamMember, index) => {
+              .map((member, index) => {
                 const section = member.section || "Unassigned";
                 const format = member.format || "Text";
 
@@ -525,7 +546,7 @@ export const addTeamMemberAction: Action = {
             // Add a callback here to respond when new members are added
             const allTeamMembers = updatedTeamMembers;
             const teamMembersList = allTeamMembers
-              .map((member: TeamMember, index) => {
+              .map((member, index) => {
                 const section = member.section || "Unassigned";
 
                 let platformInfo = "";
@@ -561,20 +582,21 @@ export const addTeamMemberAction: Action = {
           tableName: "messages",
         });
 
-        const updatedConfig = updatedMemories.find(
-          (memory) => memory.content.type === "store-team-members-memory",
+        const updatedConfigMemory = updatedMemories.find(
+          (memory) => memory.content?.type === "store-team-members-memory",
         );
 
-        if (updatedConfig && updatedConfig.content.config) {
-          const configData = updatedConfig.content.config as TeamMemberConfig;
-          const allTeamMembers = configData.teamMembers || [];
+        if (updatedConfigMemory) {
+          const allTeamMembers = getStoredTeamMembers(
+            getCoordinatorConfig(updatedConfigMemory as any),
+          );
           logger.info(
             `Retrieved ${allTeamMembers.length} total team members for response`,
           );
 
           // Format all team members for the response
           const teamMembersList = allTeamMembers
-            .map((member: TeamMember, index) => {
+            .map((member, index) => {
               const section = member.section || "Unassigned";
               const format = member.format || "Text";
 

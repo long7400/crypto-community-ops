@@ -19,7 +19,7 @@ import {
 import { sendCheckInReportForm } from "../forms/checkInForm";
 import { sendCheckInScheduleForm } from "../forms/scheduleForm";
 import { stringifyForLog, toErrorMessage } from "../logging";
-import { requireDiscordClient } from "../platform";
+import { requireDiscordClient, resolveRoomServerId } from "../platform";
 
 interface DiscordComponentInteraction {
   customId: string;
@@ -67,11 +67,13 @@ export const checkInFormatAction: Action = {
         return false;
       }
 
-      const serverId = room.serverId;
+      const serverId = await resolveRoomServerId(runtime, room);
       if (!serverId) {
         logger.error("No server ID found for room");
         return false;
       }
+
+      state.data.serverId = serverId;
 
       // Check if user is an admin
       logger.info(
@@ -131,9 +133,7 @@ export const checkInFormatAction: Action = {
 
       try {
         discordService = {
-          client: (await requireDiscordClient(
-            runtime,
-          )) as DiscordService["client"],
+          client: requireDiscordClient(runtime) as DiscordService["client"],
         } as DiscordService;
         logger.info("Successfully retrieved Discord service with client");
       } catch (error: unknown) {
@@ -167,7 +167,9 @@ export const checkInFormatAction: Action = {
         return { success: false, error: "No room found for the message" };
       }
 
-      const serverId = room.serverId;
+      const serverId =
+        (state.data?.serverId as string | undefined) ??
+        (await resolveRoomServerId(runtime, room));
       if (!serverId) {
         logger.error("No server ID found for room");
         return { success: false, error: "No server ID found for room" };

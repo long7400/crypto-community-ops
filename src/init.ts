@@ -131,7 +131,7 @@ export async function initializeAllSystems(
         id: worldId,
         name: server.name,
         messageServerId,
-        serverId: worldId,
+        serverId: messageServerId,
         agentId: runtime.agentId,
         metadata: {
           roles: {
@@ -190,7 +190,7 @@ export async function startOnboardingDM(
       type: ChannelType.DM,
       channelId: msg.channelId,
       messageServerId: stringToUuid(guild.id),
-      serverId: worldId,
+      serverId: stringToUuid(guild.id),
       worldId: worldId,
     });
 

@@ -10,6 +10,13 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { stringifyForLog, toErrorMessage } from "../logging";
+import {
+  type CoordinatorRecord,
+  getCoordinatorArray,
+  getCoordinatorConfig,
+  isStoredCoordinatorTeamMember,
+  type StoredCoordinatorTeamMember,
+} from "../storage";
 
 interface EntityPlatformMetadata {
   metadata?: {
@@ -23,15 +30,11 @@ interface EntityPlatformMetadata {
   };
 }
 
-interface TeamMember {
-  section: string;
-  tgName?: string;
-  discordName?: string;
-  format: string;
-  serverId: string;
-  serverName?: string;
-  createdAt?: string;
-  updatesFormat?: string[];
+function getStoredTeamMembers(
+  config: CoordinatorRecord | undefined,
+): StoredCoordinatorTeamMember[] {
+  const teamMembers = getCoordinatorArray(config, "teamMembers");
+  return teamMembers?.filter(isStoredCoordinatorTeamMember) ?? [];
 }
 
 /**
@@ -143,15 +146,15 @@ export const updatesFormatAction: Action = {
       );
 
       // Initialize an empty array for all team members across all servers
-      let allTeamMembers: TeamMember[] = [];
+      let allTeamMembers: StoredCoordinatorTeamMember[] = [];
 
       // Extract all team members from all configs
       teamMemberConfigs.forEach((config) => {
-        if (config.content?.config) {
-          const configData = config.content.config as {
-            teamMembers: TeamMember[];
-          };
-          const teamMembers = configData.teamMembers || [];
+        const teamMembers = getStoredTeamMembers(
+          getCoordinatorConfig(config as any),
+        );
+
+        if (teamMembers.length > 0) {
           logger.info(`Found ${teamMembers.length} team members in config`);
           allTeamMembers = [...allTeamMembers, ...teamMembers];
         }
