@@ -18,7 +18,11 @@ import {
 import type { TeamMemberUpdate } from "../../../types";
 import { stringifyForLog, toErrorMessage } from "../logging";
 import { getDiscordClient } from "../platform";
-import { getReportChannelConfigMemory } from "../storage";
+import {
+  getCoordinatorConfig,
+  getCoordinatorString,
+  getReportChannelConfigMemory,
+} from "../storage";
 
 interface EntityPlatformMetadata {
   metadata?: {
@@ -78,7 +82,7 @@ async function postUpdateToDiscordChannel(
     logger.info("=== POST TEAM MEMBER UPDATE TO DISCORD START ===");
 
     // Get the Discord service
-    const discordResult = await getDiscordClient(runtime);
+    const discordResult = getDiscordClient(runtime);
     if (!discordResult.ok) {
       logger.error(discordResult.error);
       return false;
@@ -125,17 +129,17 @@ async function postUpdateToDiscordChannel(
       return false;
     }
 
-    const configData = config.content?.config as ReportChannelConfig;
+    const configData = getCoordinatorConfig(config);
+    const channelId = getCoordinatorString(configData, "channelId");
     logger.info(
       `Found report channel config: ${stringifyForLog({
         configId: config.id,
         configType: config.content?.type,
         configServerId: targetGuild.id,
-        configChannelId: configData?.channelId,
+        configChannelId: channelId,
       })}`,
     );
 
-    const channelId = configData?.channelId;
     if (!channelId) {
       logger.warn("No channel ID in config");
       return false;

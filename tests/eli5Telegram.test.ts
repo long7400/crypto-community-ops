@@ -1,29 +1,20 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-vi.mock("@elizaos/core", async () => {
-  const actual = await import("@elizaos/core");
-
-  return {
-    ...actual,
-    composePromptFromState: vi.fn(() => "prompt"),
-    createUniqueUuid: vi.fn(
-      (_runtime: unknown, value: string) => `uuid:${value}`,
-    ),
-    initializeOnboarding: vi.fn().mockResolvedValue(undefined),
-  };
-});
-
 import {
   type IAgentRuntime,
-  initializeOnboarding,
+  createUniqueUuid,
   logger,
+  stringToUuid,
 } from "@elizaos/core";
 import { character, communityManager } from "../src/communityManager/index.ts";
 import timeoutUser from "../src/communityManager/plugins/communityManager/actions/timeout.ts";
 import { CommunityManagerService } from "../src/communityManager/plugins/communityManager/communityService.ts";
-import { initializeAllSystems, startTelegramOnboarding } from "../src/init.ts";
+import {
+  initializeAllSystems,
+  startOnboardingDM,
+  startTelegramOnboarding,
+} from "../src/init.ts";
 import {
   createTelegramRuntimeMock,
   createTelegramWorld,
@@ -31,7 +22,7 @@ import {
 
 describe("Eli5 Telegram E2E", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    vi.restoreAllMocks();
   });
 
   it("guards Eli5 telegram plugin loading behind the dedicated token while preserving the secret wiring", () => {
@@ -94,11 +85,6 @@ describe("Eli5 Telegram E2E", () => {
       botUsername: "eli5_bot",
     });
 
-    expect(initializeOnboarding).toHaveBeenCalledWith(
-      runtime,
-      world,
-      expect.any(Object),
-    );
     expect(telegramSendMessage).toHaveBeenCalledWith(-100123, {
       text: "Hello @ownerUser! Could we take a few minutes to get everything set up? Please click this link to start chatting with me: https://t.me/eli5_bot?start=onboarding",
     });
@@ -167,8 +153,12 @@ describe("Eli5 Telegram E2E", () => {
 
   it("derives Discord onboarding world ids from the raw guild id to match plugin-discord", async () => {
     vi.spyOn(console, "log").mockImplementation(() => undefined);
+    const expectedWorldId = createUniqueUuid(
+      { agentId: "agent-id" } as IAgentRuntime,
+      "discord-guild-1",
+    );
     const getWorld = vi.fn(async (worldId: string) => {
-      return worldId === "uuid:discord-guild-1"
+      return worldId === expectedWorldId
         ? { id: worldId, metadata: {} }
         : undefined;
     });
@@ -191,11 +181,55 @@ describe("Eli5 Telegram E2E", () => {
       { settings: {} } as any,
     );
 
-    expect(getWorld).toHaveBeenCalledWith("uuid:discord-guild-1");
+    expect(getWorld).toHaveBeenCalledWith(expectedWorldId);
     expect(ensureWorldExists).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "uuid:discord-guild-1",
+        id: expectedWorldId,
         name: "Guild One",
+      }),
+    );
+  });
+
+  it("stores onboarding DMs with guild UUID aliases compatible with plugin-discord", async () => {
+    const ensureRoomExists = vi.fn().mockResolvedValue(undefined);
+    const createMemory = vi.fn().mockResolvedValue(undefined);
+    const getEntityById = vi.fn().mockResolvedValue({ id: "agent-id" });
+    const runtime = {
+      agentId: "agent-id",
+      ensureRoomExists,
+      createMemory,
+      getEntityById,
+      createEntity: vi.fn().mockResolvedValue(undefined),
+      character: { name: "Eli5" },
+    } as unknown as IAgentRuntime;
+    const send = vi.fn().mockResolvedValue({
+      channel: { id: "dm-channel-1" },
+      channelId: "dm-channel-1",
+    });
+    const guild = {
+      id: "discord-guild-1",
+      ownerId: "owner-1",
+      members: {
+        fetch: vi.fn().mockResolvedValue({
+          id: "owner-1",
+          user: { username: "ownerUser" },
+          send,
+        }),
+      },
+    } as any;
+
+    const expectedWorldId = createUniqueUuid(runtime, "discord-guild-1");
+    const expectedRoomId = createUniqueUuid(runtime, "dm-channel-1");
+
+    await startOnboardingDM(runtime, guild, expectedWorldId as any);
+
+    expect(ensureRoomExists).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: expectedRoomId,
+        channelId: "dm-channel-1",
+        messageServerId: stringToUuid("discord-guild-1"),
+        serverId: stringToUuid("discord-guild-1"),
+        worldId: expectedWorldId,
       }),
     );
   });
@@ -235,9 +269,11 @@ describe("Eli5 Telegram E2E", () => {
     });
 
     expect(ctx.reply).toHaveBeenCalledWith("Welcome Ada Lovelace!");
+    const expectedRoomId = createUniqueUuid(runtime, ctx.chat.id.toString());
+
     expect(runtime.ensureRoomExists).toHaveBeenCalledWith(
       expect.objectContaining({
-        id: "uuid:-100777",
+        id: expectedRoomId,
         source: "telegram",
         channelId: "-100777",
         serverId: "-100777",
@@ -247,7 +283,7 @@ describe("Eli5 Telegram E2E", () => {
     expect(runtime.createMemory).toHaveBeenCalledWith(
       expect.objectContaining({
         entityId: "new-member-entity",
-        roomId: "uuid:-100777",
+        roomId: expectedRoomId,
         content: expect.objectContaining({
           text: "Welcome Ada Lovelace!",
           source: "telegram",

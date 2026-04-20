@@ -19,6 +19,8 @@ import { requireDiscordClient } from "../platform";
 import {
   ensureCoordinatorRoom,
   getCheckInSchedulesRoomId,
+  getCoordinatorConfig,
+  getCoordinatorString,
   getReportChannelConfigRoomId,
 } from "../storage";
 
@@ -58,6 +60,7 @@ interface ExtendedInteraction {
     content: string;
     ephemeral?: boolean;
   }) => Promise<unknown>;
+  callback?: (response: { text: string }) => Promise<unknown>;
   user?: User;
   member?: { user?: { id: string } };
   selections?: {
@@ -117,29 +120,16 @@ export class CheckInService extends Service {
       return;
     }
 
-    logger.warn(
-      `No direct interaction reply methods found for ${interaction.customId}; sending callback-style response`,
-    );
+    if (interaction.callback) {
+      logger.warn(
+        `No direct interaction reply methods found for ${interaction.customId}; using callback response`,
+      );
+      await interaction.callback({ text: content });
+      return;
+    }
 
-    await this.runtime.createMemory(
-      {
-        id: createUniqueUuid(
-          this.runtime,
-          `checkin-response-${interaction.customId}-${Date.now()}`,
-        ),
-        entityId: this.runtime.agentId,
-        agentId: this.runtime.agentId,
-        roomId:
-          (interaction.roomId as UUID | undefined) ?? this.runtime.agentId,
-        content: {
-          type: "discord-response",
-          text: content,
-          ephemeral,
-          source: "team-coordinator",
-        },
-        createdAt: Date.now(),
-      },
-      "messages",
+    logger.warn(
+      `No interaction response path found for ${interaction.customId}`,
     );
   }
 
@@ -239,9 +229,7 @@ export class CheckInService extends Service {
 
       // TODO : get discord service cool or in start
       const discordService = {
-        client: (await requireDiscordClient(
-          this.runtime,
-        )) as DiscordService["client"],
+        client: requireDiscordClient(this.runtime) as DiscordService["client"],
       } as DiscordService;
 
       // Fetch user details
@@ -501,13 +489,20 @@ export class CheckInService extends Service {
       });
 
       for (const memory of memories) {
-        if (memory.content.type === "report-channel-config") {
-          const config = memory.content.config as ReportChannelConfig;
-          if (config.serverId) {
-            this.reportChannelConfigs.set(config.serverId, config);
-            logger.info(
-              `Loaded report channel config for server ${config.serverId}`,
-            );
+        if (memory.content?.type === "report-channel-config") {
+          const config = getCoordinatorConfig(memory as any);
+          const serverId = getCoordinatorString(config, "serverId");
+          const channelId = getCoordinatorString(config, "channelId");
+
+          if (serverId && channelId) {
+            this.reportChannelConfigs.set(serverId, {
+              serverId,
+              channelId,
+              serverName:
+                getCoordinatorString(config, "serverName") ?? "Unknown Server",
+              createdAt: getCoordinatorString(config, "createdAt") ?? "",
+            });
+            logger.info(`Loaded report channel config for server ${serverId}`);
           }
         }
       }

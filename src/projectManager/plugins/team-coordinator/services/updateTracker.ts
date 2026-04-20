@@ -22,9 +22,18 @@ import { toErrorMessage } from "../logging";
 import { getDiscordClient, getTelegramBot } from "../platform";
 import {
   type CoordinatorMemory,
+  type CoordinatorRecord,
   filterCheckInScheduleMemories,
   getCheckInSchedulesRoomId,
+  getCoordinatorArray,
+  getCoordinatorConfig,
+  getCoordinatorMemoryId,
+  getCoordinatorRoomId,
+  getCoordinatorSchedule,
+  getCoordinatorString,
   getTeamMembersConfigMemory,
+  isStoredCoordinatorTeamMember,
+  type StoredCoordinatorTeamMember,
 } from "../storage";
 
 // Define interfaces for custom services
@@ -39,6 +48,13 @@ interface ITelegramService extends Service {
 // Extended CheckInSchedule with lastUpdated property
 interface ExtendedCheckInSchedule extends CheckInSchedule {
   lastUpdated?: number;
+}
+
+function getStoredTeamMembers(
+  config: CoordinatorRecord | undefined,
+): StoredCoordinatorTeamMember[] {
+  const teamMembers = getCoordinatorArray(config, "teamMembers");
+  return teamMembers?.filter(isStoredCoordinatorTeamMember) ?? [];
 }
 
 export class TeamUpdateTrackerService extends Service {
@@ -66,8 +82,8 @@ export class TeamUpdateTrackerService extends Service {
   async start(): Promise<void> {
     logger.info("Starting Discord Channel Service");
     try {
-      const discordResult = await getDiscordClient(this.runtime);
-      const telegramResult = await getTelegramBot(this.runtime);
+      const discordResult = getDiscordClient(this.runtime);
+      const telegramResult = getTelegramBot(this.runtime);
 
       if (discordResult.ok) {
         logger.info("Discord service found, client available");
@@ -97,9 +113,9 @@ export class TeamUpdateTrackerService extends Service {
 
   private setupDiscordRetry() {
     logger.info("Setting up retry for Discord service connection");
-    const intervalId = setInterval(async () => {
+    const intervalId = setInterval(() => {
       try {
-        const discordResult = await getDiscordClient(this.runtime);
+        const discordResult = getDiscordClient(this.runtime);
         if (discordResult.ok) {
           logger.info("Discord service now available, connecting client");
           this.client = discordResult.client as Client;
@@ -118,9 +134,9 @@ export class TeamUpdateTrackerService extends Service {
 
   private setupTelegramRetry() {
     logger.info("Setting up retry for Telegram service connection");
-    const intervalId = setInterval(async () => {
+    const intervalId = setInterval(() => {
       try {
-        const telegramResult = await getTelegramBot(this.runtime);
+        const telegramResult = getTelegramBot(this.runtime);
         if (telegramResult.ok) {
           logger.info("Telegram service now available, connecting bot");
           this.telegramBot = telegramResult.client;
@@ -350,14 +366,15 @@ export class TeamUpdateTrackerService extends Service {
         }>;
       }
 
-      if (!teamMembersConfig || !teamMembersConfig.content?.config) {
+      const config = getCoordinatorConfig(teamMembersConfig);
+
+      if (!teamMembersConfig) {
         logger.info("No team members found for this server");
         return [];
       }
 
       // Extract team members
-      const config = teamMembersConfig.content.config as TeamMembersConfig;
-      const teamMembers = config.teamMembers || [];
+      const teamMembers = getStoredTeamMembers(config);
 
       logger.info(
         `Found ${teamMembers.length} team members for server ${serverId}`,
@@ -374,13 +391,18 @@ export class TeamUpdateTrackerService extends Service {
 
       // Format the response
       return filteredMembers.map((member) => ({
-        username: member.discordName || member.tgName || "Unknown",
+        username:
+          platform === "telegram"
+            ? member.tgName || member.discordName || "Unknown"
+            : member.discordName || member.tgName || "Unknown",
         section: member.section || "Unassigned",
-        platform: member.discordName
-          ? "discord"
-          : member.tgName
-            ? "telegram"
-            : "unknown",
+        platform:
+          platform ||
+          (member.discordName
+            ? "discord"
+            : member.tgName
+              ? "telegram"
+              : "unknown"),
         updatesFormat: member.updatesFormat || [],
       }));
     } catch (error: unknown) {
@@ -405,8 +427,8 @@ export class TeamUpdateTrackerService extends Service {
     this.isJobRunning = true;
     try {
       logger.info("Running check-in service job");
-      const discordResult = await getDiscordClient(this.runtime);
-      const telegramResult = await getTelegramBot(this.runtime);
+      const discordResult = getDiscordClient(this.runtime);
+      const telegramResult = getTelegramBot(this.runtime);
 
       if (discordResult.ok) {
         logger.info("Discord service now available, connecting client");
@@ -418,409 +440,431 @@ export class TeamUpdateTrackerService extends Service {
         this.telegramBot = telegramResult.client;
       }
 
-      // Dummy function for check-in service
+      if (!this.client && !this.telegramBot?.telegram) {
+        logger.warn(
+          "Neither Discord nor Telegram clients are available for check-in service",
+        );
+        return;
+      }
+
       if (this.client) {
         logger.info("Discord client is available for check-in service");
-        // Fetch all check-in schedules
-        logger.info("Fetching all check-in schedules...");
-        try {
-          const checkInSchedules = await fetchCheckInSchedules(this.runtime);
-          logger.info(
-            `Successfully fetched ${checkInSchedules.length} check-in schedules`,
+      } else {
+        logger.info(
+          "Discord client unavailable; continuing with non-Discord schedule processing",
+        );
+      }
+
+      // Fetch all check-in schedules
+      logger.info("Fetching all check-in schedules...");
+      try {
+        const checkInSchedules = await fetchCheckInSchedules(this.runtime);
+        logger.info(
+          `Successfully fetched ${checkInSchedules.length} check-in schedules`,
+        );
+
+        // Get current time in UTC
+        const now = new Date();
+        const currentHour = now.getUTCHours();
+        const currentMinute = now.getUTCMinutes();
+        const currentDay = now.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
+        logger.info(
+          `Current UTC time: ${currentHour}:${currentMinute}, day: ${currentDay}`,
+        );
+
+        // Filter schedules that match the current time and haven't been updated in the last day
+        const matchingSchedules = checkInSchedules.filter((scheduleBase) => {
+          // Cast to extended type with lastUpdated
+          const schedule = scheduleBase as ExtendedCheckInSchedule;
+
+          // Check if the schedule has a lastUpdated date and if it's at least one day old
+          const lastUpdated = schedule.lastUpdated
+            ? new Date(schedule.lastUpdated)
+            : null;
+          const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+
+          const shouldRunBasedOnLastUpdate =
+            !lastUpdated || lastUpdated <= oneDayAgo;
+
+          logger.debug(
+            `Schedule ${schedule.scheduleId} last updated: ${lastUpdated ? lastUpdated.toISOString() : "never"}, should run: ${shouldRunBasedOnLastUpdate}`,
           );
 
-          // Get current time in UTC
-          const now = new Date();
-          const currentHour = now.getUTCHours();
-          const currentMinute = now.getUTCMinutes();
-          const currentDay = now.getUTCDay(); // 0 = Sunday, 1 = Monday, etc.
-          logger.info(
-            `Current UTC time: ${currentHour}:${currentMinute}, day: ${currentDay}`,
-          );
-
-          // Filter schedules that match the current time and haven't been updated in the last day
-          const matchingSchedules = checkInSchedules.filter((scheduleBase) => {
-            // Cast to extended type with lastUpdated
-            const schedule = scheduleBase as ExtendedCheckInSchedule;
-
-            // Check if the schedule has a lastUpdated date and if it's at least one day old
-            const lastUpdated = schedule.lastUpdated
-              ? new Date(schedule.lastUpdated)
-              : null;
-            const oneDayAgo = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-
-            const shouldRunBasedOnLastUpdate =
-              !lastUpdated || lastUpdated <= oneDayAgo;
-
-            logger.debug(
-              `Schedule ${schedule.scheduleId} last updated: ${lastUpdated ? lastUpdated.toISOString() : "never"}, should run: ${shouldRunBasedOnLastUpdate}`,
+          if (!shouldRunBasedOnLastUpdate) {
+            logger.info(
+              `Skipping schedule ${schedule.scheduleId} as it was updated less than a day ago`,
             );
+            return false;
+          }
 
-            if (!shouldRunBasedOnLastUpdate) {
-              logger.info(
-                `Skipping schedule ${schedule.scheduleId} as it was updated less than a day ago`,
+          // Parse the checkInTime (format: "HH:MM")
+          const [scheduleHour, scheduleMinute] = schedule.checkInTime
+            .split(":")
+            .map(Number);
+          logger.debug(
+            `Schedule time: ${scheduleHour}:${scheduleMinute} for schedule ID: ${schedule.scheduleId}`,
+          );
+
+          // Check if current time matches schedule time (with 30 minute tolerance)
+          const scheduleTimeInMinutes = scheduleHour * 60 + scheduleMinute;
+          const currentTimeInMinutes = currentHour * 60 + currentMinute;
+          const timeDifferenceInMinutes = Math.abs(
+            currentTimeInMinutes - scheduleTimeInMinutes,
+          );
+
+          // Check if within 30 minutes (accounting for day boundaries)
+          const timeMatches =
+            timeDifferenceInMinutes <= 30 ||
+            timeDifferenceInMinutes >= 24 * 60 - 30;
+
+          logger.info(
+            `Time comparison for schedule ${schedule.scheduleId}: Current=${currentTimeInMinutes} min, Schedule=${scheduleTimeInMinutes} min, Diff=${timeDifferenceInMinutes} min, Matches=${timeMatches}`,
+          );
+
+          // Check frequency
+          let frequencyMatches = false;
+          switch (schedule.frequency) {
+            case "DAILY":
+              frequencyMatches = true;
+              break;
+            case "WEEKDAYS":
+              // Check if current day is Monday-Friday (1-5)
+              frequencyMatches = currentDay >= 1 && currentDay <= 5;
+              break;
+            case "WEEKLY":
+              // For simplicity, assume weekly is on Monday
+              frequencyMatches = currentDay === 1;
+              break;
+            case "BIWEEKLY": {
+              // For simplicity, assume biweekly is on every other Monday
+              // We can use the week number of the year to determine if it's an odd or even week
+              const weekNumber = Math.floor(
+                (now.getTime() -
+                  new Date(now.getUTCFullYear(), 0, 1).getTime()) /
+                  (7 * 24 * 60 * 60 * 1000),
               );
-              return false;
+              frequencyMatches = currentDay === 1 && weekNumber % 2 === 0;
+              break;
             }
-
-            // Parse the checkInTime (format: "HH:MM")
-            const [scheduleHour, scheduleMinute] = schedule.checkInTime
-              .split(":")
-              .map(Number);
-            logger.debug(
-              `Schedule time: ${scheduleHour}:${scheduleMinute} for schedule ID: ${schedule.scheduleId}`,
-            );
-
-            // Check if current time matches schedule time (with 30 minute tolerance)
-            const scheduleTimeInMinutes = scheduleHour * 60 + scheduleMinute;
-            const currentTimeInMinutes = currentHour * 60 + currentMinute;
-            const timeDifferenceInMinutes = Math.abs(
-              currentTimeInMinutes - scheduleTimeInMinutes,
-            );
-
-            // Check if within 30 minutes (accounting for day boundaries)
-            const timeMatches =
-              timeDifferenceInMinutes <= 30 ||
-              timeDifferenceInMinutes >= 24 * 60 - 30;
-
-            logger.info(
-              `Time comparison for schedule ${schedule.scheduleId}: Current=${currentTimeInMinutes} min, Schedule=${scheduleTimeInMinutes} min, Diff=${timeDifferenceInMinutes} min, Matches=${timeMatches}`,
-            );
-
-            // Check frequency
-            let frequencyMatches = false;
-            switch (schedule.frequency) {
-              case "DAILY":
-                frequencyMatches = true;
-                break;
-              case "WEEKDAYS":
-                // Check if current day is Monday-Friday (1-5)
-                frequencyMatches = currentDay >= 1 && currentDay <= 5;
-                break;
-              case "WEEKLY":
-                // For simplicity, assume weekly is on Monday
-                frequencyMatches = currentDay === 1;
-                break;
-              case "BIWEEKLY": {
-                // For simplicity, assume biweekly is on every other Monday
-                // We can use the week number of the year to determine if it's an odd or even week
-                const weekNumber = Math.floor(
-                  (now.getTime() -
-                    new Date(now.getUTCFullYear(), 0, 1).getTime()) /
-                    (7 * 24 * 60 * 60 * 1000),
-                );
-                frequencyMatches = currentDay === 1 && weekNumber % 2 === 0;
-                break;
-              }
-              case "MONTHLY":
-                // For simplicity, assume monthly is on the 1st of the month
-                frequencyMatches = now.getUTCDate() === 1;
-                break;
-              default:
-                frequencyMatches = true; // Default to true for unknown frequencies
-            }
-
-            logger.info(
-              `Frequency check for schedule ${schedule.scheduleId}: Type=${schedule.frequency}, Matches=${frequencyMatches}`,
-            );
-
-            return (
-              timeMatches && frequencyMatches && shouldRunBasedOnLastUpdate
-            );
-          });
+            case "MONTHLY":
+              // For simplicity, assume monthly is on the 1st of the month
+              frequencyMatches = now.getUTCDate() === 1;
+              break;
+            default:
+              frequencyMatches = true; // Default to true for unknown frequencies
+          }
 
           logger.info(
-            `Found ${matchingSchedules.length} schedules matching current time, frequency, and update criteria`,
+            `Frequency check for schedule ${schedule.scheduleId}: Type=${schedule.frequency}, Matches=${frequencyMatches}`,
           );
-          if (matchingSchedules.length > 0) {
-            logger.info(
-              `Matching schedules: ${JSON.stringify(matchingSchedules, null, 2)}`,
-            );
 
-            // Process each matching schedule to fetch users and send check-in requests
-            for (const schedule of matchingSchedules) {
-              try {
+          return timeMatches && frequencyMatches && shouldRunBasedOnLastUpdate;
+        });
+
+        logger.info(
+          `Found ${matchingSchedules.length} schedules matching current time, frequency, and update criteria`,
+        );
+        if (matchingSchedules.length > 0) {
+          logger.info(
+            `Matching schedules: ${JSON.stringify(matchingSchedules, null, 2)}`,
+          );
+
+          // Process each matching schedule to fetch users and send check-in requests
+          for (const schedule of matchingSchedules) {
+            try {
+              logger.info(
+                `Processing check-in schedule: ${schedule.scheduleId} for channel: ${schedule.channelId}`,
+              );
+
+              logger.info(`Schedule source: ${schedule.source}`);
+
+              let serverName;
+
+              if (this.client) {
+                logger.info("Discord service client is available");
+
+                for (const [, guild] of this.client.guilds.cache) {
+                  const channels = await guild.channels.fetch();
+                  const channel = channels.find((ch) => {
+                    return (
+                      ch &&
+                      typeof ch === "object" &&
+                      "id" in ch &&
+                      ch.id === schedule.channelId
+                    );
+                  });
+
+                  if (channel) {
+                    serverName = guild.name;
+                    logger.info(`Found channel in server: ${serverName}`);
+                    break;
+                  }
+                }
+              } else {
+                logger.info("Discord service or client not available");
+              }
+
+              // Check if source is Telegram
+              if (schedule?.source === "telegram") {
                 logger.info(
-                  `Processing check-in schedule: ${schedule.scheduleId} for channel: ${schedule.channelId}`,
+                  `Telegram source detected for schedule ${schedule.scheduleId}`,
                 );
 
-                logger.info(`Schedule source: ${schedule.source}`);
-
-                let serverName;
-
-                if (this.client) {
-                  logger.info("Discord service client is available");
-
-                  for (const [, guild] of this.client.guilds.cache) {
-                    const channels = await guild.channels.fetch();
-                    const channel = channels.find((ch) => {
-                      return (
-                        ch &&
-                        typeof ch === "object" &&
-                        "id" in ch &&
-                        ch.id === schedule.channelId
-                      );
-                    });
-
-                    if (channel) {
-                      serverName = guild.name;
-                      logger.info(`Found channel in server: ${serverName}`);
-                      break;
-                    }
-                  }
-                } else {
-                  logger.info("Discord service or client not available");
+                if (!this.telegramBot?.telegram) {
+                  continue;
                 }
 
-                // Check if source is Telegram
-                if (schedule?.source === "telegram") {
-                  logger.info(
-                    `Telegram source detected for schedule ${schedule.scheduleId}`,
+                const serverId = schedule.serverId || "";
+                if (!serverId) {
+                  logger.warn(
+                    `Schedule ${schedule.scheduleId} has no serverId, skipping`,
                   );
+                  continue;
+                }
 
-                  if (!this.telegramBot?.telegram) {
-                    continue;
-                  }
+                logger.info(
+                  `Preparing to send update request to Telegram group ${serverId}`,
+                );
 
-                  const serverId = schedule.serverId || "";
-                  if (!serverId) {
-                    logger.warn(
-                      `Schedule ${schedule.scheduleId} has no serverId, skipping`,
-                    );
-                    continue;
-                  }
+                // Get team members for this server
+                const teamMembers = await this.getTeamMembers(
+                  serverId,
+                  "telegram",
+                );
+                logger.info(
+                  `Found ${teamMembers.length} team members for Telegram server ${serverId}`,
+                );
 
-                  logger.info(
-                    `Preparing to send update request to Telegram group ${serverId}`,
-                  );
-
-                  // Get team members for this server
-                  const teamMembers = await this.getTeamMembers(
-                    serverId,
-                    "telegram",
-                  );
-                  logger.info(
-                    `Found ${teamMembers.length} team members for Telegram server ${serverId}`,
-                  );
-
-                  // Create mentions for team members
-                  let mentions = "";
-                  if (teamMembers.length > 0) {
-                    mentions = "Tagging team members: ";
-                    for (const member of teamMembers) {
-                      if (member.username) {
-                        mentions += `${member.username} `;
-                      }
+                // Create mentions for team members
+                let mentions = "";
+                if (teamMembers.length > 0) {
+                  mentions = "Tagging team members: ";
+                  for (const member of teamMembers) {
+                    if (member.username) {
+                      mentions += `${member.username} `;
                     }
-                    mentions += "\n\n";
                   }
-                  const updateRequestMessage =
-                    `📢 *Team Update Request*\n\n${mentions}Hello team! I need your updates for this check-in.\n\n` +
-                    `*Check-in Type*: ${schedule.checkInType}\n\n` +
-                    `Please send me a direct message with your updates. To get started, message me with "Can you share the format for updates?" and I will provide you with the template.\n\n`;
+                  mentions += "\n\n";
+                }
+                const updateRequestMessage =
+                  `📢 *Team Update Request*\n\n${mentions}Hello team! I need your updates for this check-in.\n\n` +
+                  `*Check-in Type*: ${schedule.checkInType}\n\n` +
+                  `Please send me a direct message with your updates. To get started, message me with "Can you share the format for updates?" and I will provide you with the template.\n\n`;
 
-                  await this.telegramBot.telegram.sendMessage(
-                    serverId,
-                    updateRequestMessage,
-                    {
-                      parse_mode: "Markdown",
-                    },
-                  );
-                  logger.info(
-                    `Sent formatted update request to Telegram group ${serverId} with ${teamMembers.length} tagged members`,
-                  );
+                await this.telegramBot.telegram.sendMessage(
+                  serverId,
+                  updateRequestMessage,
+                  {
+                    parse_mode: "Markdown",
+                  },
+                );
+                logger.info(
+                  `Sent formatted update request to Telegram group ${serverId} with ${teamMembers.length} tagged members`,
+                );
 
-                  logger.info(
-                    `Successfully sent group check-in message to Telegram channel ${schedule.channelId}`,
+                logger.info(
+                  `Successfully sent group check-in message to Telegram channel ${schedule.channelId}`,
+                );
+              } else {
+                // For Discord or other sources, continue with the original flow
+                // Get team members for this server from memory instead of all channel users
+                const serverId = schedule.serverId || "";
+                if (!serverId) {
+                  logger.warn(
+                    `Schedule ${schedule.scheduleId} has no serverId, skipping`,
                   );
-                } else {
-                  // For Discord or other sources, continue with the original flow
-                  // Get team members for this server from memory instead of all channel users
-                  const serverId = schedule.serverId || "";
-                  if (!serverId) {
+                  continue;
+                }
+
+                if (!this.client) {
+                  logger.warn(
+                    `Skipping Discord schedule ${schedule.scheduleId} because Discord client is unavailable`,
+                  );
+                  continue;
+                }
+
+                const teamMembers = await this.getTeamMembers(
+                  serverId,
+                  "discord",
+                );
+
+                logger.info(
+                  `Found ${teamMembers.length} team members for Discord server ${serverId}`,
+                );
+
+                if (teamMembers.length === 0) {
+                  logger.warn(
+                    `No team members found for server ${serverId} (${serverName}) for schedule ${schedule.scheduleId}`,
+                  );
+                  continue;
+                }
+
+                // Fetch users in the channel
+                const channelUsers = await this.fetchUsersInChannel(
+                  schedule.channelId,
+                );
+                logger.info(
+                  `Fetched ${channelUsers.length} users from channel ${schedule.channelId}`,
+                );
+
+                // Match channel users with team members
+                this.usersToMessage = [];
+                for (const teamMember of teamMembers) {
+                  // Extract username from discordName (after @)
+                  const discordUsername = teamMember.username?.startsWith("@")
+                    ? teamMember.username.substring(1)
+                    : teamMember.username;
+
+                  if (!discordUsername) {
                     logger.warn(
-                      `Schedule ${schedule.scheduleId} has no serverId, skipping`,
+                      `Team member in section ${teamMember.section} has no Discord username`,
                     );
                     continue;
                   }
 
-                  const teamMembers = await this.getTeamMembers(
-                    serverId,
-                    "discord",
+                  // Find matching user in channel
+                  const matchingUser = channelUsers.find(
+                    (user) =>
+                      user.username === discordUsername ||
+                      user.displayName === discordUsername,
                   );
 
-                  logger.info(
-                    `Found ${teamMembers.length} team members for Discord server ${serverId}`,
-                  );
-
-                  if (teamMembers.length === 0) {
-                    logger.warn(
-                      `No team members found for server ${serverId} (${serverName}) for schedule ${schedule.scheduleId}`,
-                    );
-                    continue;
-                  }
-
-                  // Fetch users in the channel
-                  const channelUsers = await this.fetchUsersInChannel(
-                    schedule.channelId,
-                  );
-                  logger.info(
-                    `Fetched ${channelUsers.length} users from channel ${schedule.channelId}`,
-                  );
-
-                  // Match channel users with team members
-                  this.usersToMessage = [];
-                  for (const teamMember of teamMembers) {
-                    // Extract username from discordName (after @)
-                    const discordUsername = teamMember.username?.startsWith("@")
-                      ? teamMember.username.substring(1)
-                      : teamMember.username;
-
-                    if (!discordUsername) {
-                      logger.warn(
-                        `Team member in section ${teamMember.section} has no Discord username`,
-                      );
-                      continue;
-                    }
-
-                    // Find matching user in channel
-                    const matchingUser = channelUsers.find(
-                      (user) =>
-                        user.username === discordUsername ||
-                        user.displayName === discordUsername,
-                    );
-
-                    if (matchingUser) {
-                      // Log the custom update format if available
-                      if (
-                        teamMember.updatesFormat &&
-                        teamMember.updatesFormat.length > 0
-                      ) {
-                        logger.info(
-                          `Team member ${discordUsername} has custom update format: ${JSON.stringify(
-                            teamMember.updatesFormat,
-                          )}`,
-                        );
-                      } else {
-                        logger.debug(
-                          `Team member ${discordUsername} using default update format`,
-                        );
-                      }
-
-                      this.usersToMessage.push({
-                        ...matchingUser,
-                        updatesFormat: teamMember.updatesFormat,
-                      });
-
+                  if (matchingUser) {
+                    // Log the custom update format if available
+                    if (
+                      teamMember.updatesFormat &&
+                      teamMember.updatesFormat.length > 0
+                    ) {
                       logger.info(
-                        `Matched team member ${discordUsername} with channel user ${matchingUser.displayName}`,
+                        `Team member ${discordUsername} has custom update format: ${JSON.stringify(
+                          teamMember.updatesFormat,
+                        )}`,
                       );
                     } else {
-                      logger.warn(
-                        `Could not find channel user matching team member ${discordUsername}`,
+                      logger.debug(
+                        `Team member ${discordUsername} using default update format`,
                       );
                     }
-                  }
 
-                  logger.info(
-                    `Sending messages to ${this.usersToMessage.length} matched users`,
-                  );
-
-                  // Send messages to matched users
-                  if (this.usersToMessage.length > 0) {
-                    const successfullyMessaged = await this.messageAllUsers(
-                      this.usersToMessage,
-                      schedule,
-                      serverName,
-                    );
+                    this.usersToMessage.push({
+                      ...matchingUser,
+                      updatesFormat: teamMember.updatesFormat,
+                    });
 
                     logger.info(
-                      `Successfully sent messages to ${successfullyMessaged.length} users`,
+                      `Matched team member ${discordUsername} with channel user ${matchingUser.displayName}`,
                     );
                   } else {
                     logger.warn(
-                      `No matching users found to message for server ${serverId}`,
+                      `Could not find channel user matching team member ${discordUsername}`,
                     );
                   }
                 }
 
-                // Update the last updated date for the schedule
-                try {
-                  // Create a unique room ID for check-in schedules
-                  const checkInSchedulesRoomId = getCheckInSchedulesRoomId(
-                    this.runtime,
+                logger.info(
+                  `Sending messages to ${this.usersToMessage.length} matched users`,
+                );
+
+                // Send messages to matched users
+                if (this.usersToMessage.length > 0) {
+                  const successfullyMessaged = await this.messageAllUsers(
+                    this.usersToMessage,
+                    schedule,
+                    serverName,
                   );
+
                   logger.info(
-                    `Updating last updated date for schedule ${schedule.scheduleId}`,
+                    `Successfully sent messages to ${successfullyMessaged.length} users`,
                   );
-
-                  // Get memories from the check-in schedules room
-                  const memories = await this.runtime.getMemories({
-                    roomId: checkInSchedulesRoomId,
-                    tableName: "messages",
-                  });
-
-                  // Find the memory containing this schedule
-                  const scheduleMemory = filterCheckInScheduleMemories(
-                    memories as CoordinatorMemory[],
-                  ).find((memory) => {
-                    if (!memory?.content?.schedule) return false;
-
-                    const memSchedule = memory.content
-                      .schedule as ExtendedCheckInSchedule;
-                    return memSchedule.scheduleId === schedule.scheduleId;
-                  });
-
-                  if (scheduleMemory && scheduleMemory.id) {
-                    // Update the last updated date
-                    const scheduleContent =
-                      scheduleMemory.content?.schedule || {};
-                    const updatedSchedule = {
-                      ...scheduleContent,
-                      lastUpdated: Date.now(),
-                    };
-
-                    // Update the memory with the new schedule
-                    const updatedMemory: Partial<Memory> & { id: UUID } = {
-                      ...(scheduleMemory as Partial<Memory>),
-                      id: scheduleMemory.id as UUID,
-                      roomId: scheduleMemory.roomId as UUID,
-                      content: {
-                        ...(scheduleMemory.content as Memory["content"]),
-                        schedule: updatedSchedule,
-                      },
-                    };
-
-                    await this.runtime.updateMemory(updatedMemory);
-                    logger.info(
-                      `Successfully updated last updated date for schedule ${schedule.scheduleId}`,
-                    );
-                  } else {
-                    logger.warn(
-                      `Could not find memory for schedule ${schedule.scheduleId} to update last updated date`,
-                    );
-                  }
-                } catch (updateError: unknown) {
-                  logger.error(
-                    `Error updating last updated date for schedule ${schedule.scheduleId}: ${toErrorMessage(updateError)}`,
+                } else {
+                  logger.warn(
+                    `No matching users found to message for server ${serverId}`,
                   );
                 }
-              } catch (error: unknown) {
+              }
+
+              // Update the last updated date for the schedule
+              try {
+                // Create a unique room ID for check-in schedules
+                const checkInSchedulesRoomId = getCheckInSchedulesRoomId(
+                  this.runtime,
+                );
+                logger.info(
+                  `Updating last updated date for schedule ${schedule.scheduleId}`,
+                );
+
+                // Get memories from the check-in schedules room
+                const memories = await this.runtime.getMemories({
+                  roomId: checkInSchedulesRoomId,
+                  tableName: "messages",
+                });
+
+                // Find the memory containing this schedule
+                const scheduleMemory = filterCheckInScheduleMemories(
+                  memories as CoordinatorMemory[],
+                ).find((memory) => {
+                  const memSchedule = getCoordinatorSchedule(memory);
+                  return (
+                    getCoordinatorString(memSchedule, "scheduleId") ===
+                    schedule.scheduleId
+                  );
+                });
+
+                const scheduleMemoryId = getCoordinatorMemoryId(scheduleMemory);
+                const scheduleMemoryRoomId =
+                  getCoordinatorRoomId(scheduleMemory);
+
+                if (
+                  scheduleMemory &&
+                  scheduleMemoryId &&
+                  scheduleMemoryRoomId
+                ) {
+                  // Update the last updated date
+                  const scheduleContent =
+                    getCoordinatorSchedule(scheduleMemory) || {};
+                  const updatedSchedule = {
+                    ...scheduleContent,
+                    lastUpdated: Date.now(),
+                  };
+
+                  // Update the memory with the new schedule
+                  const updatedMemory: Partial<Memory> & { id: UUID } = {
+                    ...(scheduleMemory as Partial<Memory>),
+                    id: scheduleMemoryId,
+                    roomId: scheduleMemoryRoomId,
+                    content: {
+                      ...(scheduleMemory.content ?? {}),
+                      schedule: updatedSchedule,
+                    },
+                  };
+
+                  await this.runtime.updateMemory(updatedMemory);
+                  logger.info(
+                    `Successfully updated last updated date for schedule ${schedule.scheduleId}`,
+                  );
+                } else {
+                  logger.warn(
+                    `Could not find memory for schedule ${schedule.scheduleId} to update last updated date`,
+                  );
+                }
+              } catch (updateError: unknown) {
                 logger.error(
-                  `Error processing schedule ${schedule.scheduleId}: ${toErrorMessage(error)}`,
+                  `Error updating last updated date for schedule ${schedule.scheduleId}: ${toErrorMessage(updateError)}`,
                 );
               }
+            } catch (error: unknown) {
+              logger.error(
+                `Error processing schedule ${schedule.scheduleId}: ${toErrorMessage(error)}`,
+              );
             }
           }
-        } catch (error: unknown) {
-          const err = error as Error;
-          logger.error(
-            `Failed to fetch or process check-in schedules: ${toErrorMessage(error)}`,
-          );
-          logger.error(`Error stack: ${err.stack}`);
         }
-      } else {
-        logger.warn("Discord client not available for check-in service");
+      } catch (error: unknown) {
+        const err = error as Error;
+        logger.error(
+          `Failed to fetch or process check-in schedules: ${toErrorMessage(error)}`,
+        );
+        logger.error(`Error stack: ${err.stack}`);
       }
     } finally {
       this.isJobRunning = false;

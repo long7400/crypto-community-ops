@@ -38,27 +38,35 @@ export async function registerTasksWithRetry(
     }
   }
 
-  logger.error(
-    tasksApiReady
-      ? `${TEAM_COORDINATOR_TASK_REGISTRATION_FAILED}: Failed to register team coordinator tasks after all retries`
-      : "runtime.getTasks never became available; team coordinator tasks were not registered",
-  );
+  const errorMessage = tasksApiReady
+    ? `${TEAM_COORDINATOR_TASK_REGISTRATION_FAILED}: Failed to register team coordinator tasks after all retries`
+    : `${TEAM_COORDINATOR_TASK_REGISTRATION_FAILED}: runtime.getTasks never became available; team coordinator tasks were not registered`;
+
+  logger.error(errorMessage);
+  throw new Error(errorMessage);
 }
 
-export async function bootstrapTeamCoordinator(
+export function bootstrapTeamCoordinator(
   runtime: IAgentRuntime,
   options: {
     registerTasks?: (runtime: IAgentRuntime) => Promise<void>;
     retries?: number;
     delayMs?: number;
   },
-): Promise<void> {
-  void registerTasksWithRetry(runtime, options.registerTasks, {
-    retries: options.retries,
-    delayMs: options.delayMs,
-  }).catch((error) => {
-    logger.error(
-      `Error while bootstrapping team coordinator tasks: ${toErrorMessage(error)}`,
-    );
-  });
+): void {
+  const initPromise = runtime.initPromise ?? Promise.resolve();
+
+  void (async () => {
+    try {
+      await initPromise;
+      await registerTasksWithRetry(runtime, options.registerTasks, {
+        retries: options.retries,
+        delayMs: options.delayMs,
+      });
+    } catch (error) {
+      logger.error(
+        `Error while bootstrapping team coordinator tasks: ${toErrorMessage(error)}`,
+      );
+    }
+  })();
 }

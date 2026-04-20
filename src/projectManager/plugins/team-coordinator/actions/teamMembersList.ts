@@ -10,16 +10,20 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { toErrorMessage } from "../logging";
+import { resolveRoomServerId } from "../platform";
+import {
+  type CoordinatorRecord,
+  getCoordinatorArray,
+  getCoordinatorConfig,
+  isStoredCoordinatorTeamMember,
+  type StoredCoordinatorTeamMember,
+} from "../storage";
 
-interface TeamMember {
-  section: string;
-  tgName?: string;
-  discordName?: string;
-  format: string;
-  serverId: string;
-  serverName?: string;
-  createdAt?: string;
-  updatesFormat?: string[];
+function getStoredTeamMembers(
+  config: CoordinatorRecord | undefined,
+): StoredCoordinatorTeamMember[] {
+  const teamMembers = getCoordinatorArray(config, "teamMembers");
+  return teamMembers?.filter(isStoredCoordinatorTeamMember) ?? [];
 }
 
 /**
@@ -61,7 +65,7 @@ export const listTeamMembersAction: Action = {
         return false;
       }
 
-      const serverId = room.serverId;
+      const serverId = await resolveRoomServerId(runtime, room);
       if (!serverId) {
         logger.error("No server ID found for room");
         return false;
@@ -143,32 +147,22 @@ export const listTeamMembersAction: Action = {
         (memory) => memory.content?.type === "store-team-members-memory",
       );
 
-      if (!teamMembersConfig || !teamMembersConfig.content?.config) {
+      const configData = getCoordinatorConfig(teamMembersConfig as any);
+      const teamMembers = getStoredTeamMembers(configData);
+
+      if (!teamMembersConfig || teamMembers.length === 0) {
         logger.info("No team members found for this server");
         await callback({
           text: "📋 No team members have been registered yet for this server.",
         });
         return { success: true };
       }
-
-      // Extract and format team members
-      const configData = teamMembersConfig.content.config as {
-        teamMembers: TeamMember[];
-      };
-      const teamMembers = configData.teamMembers || [];
       logger.info(
         `Found ${teamMembers.length} team members for server ${serverId}`,
       );
 
-      if (teamMembers.length === 0) {
-        await callback({
-          text: "📋 No team members have been registered yet for this server.",
-        });
-        return { success: true };
-      }
-
       // Group team members by section
-      const sectionMap = new Map<string, TeamMember[]>();
+      const sectionMap = new Map<string, StoredCoordinatorTeamMember[]>();
       teamMembers.forEach((member) => {
         const section = member.section || "Unassigned";
         if (!sectionMap.has(section)) {

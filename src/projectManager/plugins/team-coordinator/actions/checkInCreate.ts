@@ -16,7 +16,7 @@ import {
   type UUID,
 } from "@elizaos/core";
 import { stringifyForLog, toErrorMessage } from "../logging";
-import { requireDiscordClient } from "../platform";
+import { requireDiscordClient, resolveRoomServerId } from "../platform";
 import {
   ensureCoordinatorRoom,
   getCheckInSchedulesRoomId,
@@ -94,11 +94,13 @@ export const recordCheckInAction: Action = {
         return false;
       }
 
-      const serverId = room.serverId;
+      const serverId = await resolveRoomServerId(runtime, room);
       if (!serverId) {
         logger.error("No server ID found for room");
         return false;
       }
+
+      state.data.serverId = serverId;
 
       // Check if user is an admin
       logger.info(
@@ -162,9 +164,7 @@ export const recordCheckInAction: Action = {
 
       try {
         discordService = {
-          client: (await requireDiscordClient(
-            runtime,
-          )) as DiscordService["client"],
+          client: requireDiscordClient(runtime) as DiscordService["client"],
         };
         logger.info("Successfully retrieved Discord service with client");
       } catch (error: unknown) {
@@ -195,7 +195,9 @@ export const recordCheckInAction: Action = {
         return { success: false, error: "No room found for the message" };
       }
 
-      const serverId = room.serverId;
+      const serverId =
+        (state.data?.serverId as string | undefined) ??
+        (await resolveRoomServerId(runtime, room));
       if (!serverId) {
         logger.error("No server ID found for room");
         return { success: false, error: "No server ID found for room" };
@@ -506,6 +508,30 @@ export const recordCheckInAction: Action = {
         "Updated check-in configuration with channel IDs:",
         checkInConfig,
       );
+
+      if (!checkInConfig.updateChannelId) {
+        const missingUpdateChannel =
+          checkInConfig.channelForUpdates || "the requested updates channel";
+        await callback({
+          text: `❌ I couldn't find a Discord text channel matching "${missingUpdateChannel}" for updates. Please use one of the available channel names and try again.`,
+        });
+        return {
+          success: false,
+          error: `Unknown updates channel: ${missingUpdateChannel}`,
+        };
+      }
+
+      if (!checkInConfig.checkInChannelId) {
+        const missingCheckInChannel =
+          checkInConfig.channelForCheckIns || "the requested check-in channel";
+        await callback({
+          text: `❌ I couldn't find a Discord text channel matching "${missingCheckInChannel}" for check-ins. Please use one of the available channel names and try again.`,
+        });
+        return {
+          success: false,
+          error: `Unknown check-in channel: ${missingCheckInChannel}`,
+        };
+      }
 
       // TODO : after things are parsed now store the check in form for group
       // TODO : store the check in storage

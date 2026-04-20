@@ -23,58 +23,50 @@ The Org is a sophisticated multi-agent system built using the ElizaOS framework.
 
 Before you begin, ensure you have the following installed:
 
-*   [Node.js](https://nodejs.org/) (Latest LTS version recommended)
-*   [Bun](https://bun.sh/) (v1.0 or higher)
-*   Access to a [PostgreSQL](https://www.postgresql.org/) database (recommended for full functionality with `@elizaos/plugin-sql`).
-
+*   [Bun](https://bun.sh/) (this repo is run locally with Bun)
+*   [Node.js](https://nodejs.org/) (required by Bun/ElizaOS tooling)
+*   Access to a [PostgreSQL](https://www.postgresql.org/) database. For local DB-backed runs, use a Neon direct/dev branch connection string via `POSTGRES_URL`.
 ## Getting Started
 
 1.  **Clone the repository:**
     ```bash
     git clone <your-repository-url>
-    cd the-org
+    cd crypto-community-ops
     ```
 
-2.  **Install dependencies:**
+2.  **Install dependencies with Bun:**
     ```bash
     bun install
     ```
 
 3.  **Set up environment variables:**
-    Create a `.env` file in the root directory of the project (`/Users/shawwalters/the-org/.env`). See the [Configuration (.env file)](#configuration-env-file) section below for details on the required variables.
+    Copy `.env.example` to `.env` in the repo root, then fill in only the integrations you plan to run locally.
 
 4.  **Run the application:**
     ```bash
     bun src/index.ts
     ```
-    This will start all agents for which the necessary environment variables are configured. To run specific agents, see [Running Specific Agents](#running-specific-agents).
+    This starts any agents whose platform configuration passes the checks in `src/index.ts`. To run specific agents, see [Running Specific Agents](#running-specific-agents).
 
 ## Configuration (`.env` file)
 
-The Org uses a `.env` file located at the root of the project to manage environment-specific configurations, such as API keys and service credentials.
+The Org uses a `.env` file at the repo root to manage environment-specific configuration.
 
-Create a `.env` file by copying the example below and filling in your actual values:
+Create it by copying `.env.example` and filling in the values you actually need for your local run:
+
+```bash
+cp .env.example .env
+```
+
+Example `.env` values:
 
 ```env
-# General Configuration
-POSTGRES_URL=postgresql://user:password@host:port/database # For @elizaos/plugin-sql
 OPENAI_API_KEY=your_openai_api_key
 ANTHROPIC_API_KEY=your_anthropic_api_key
-
-# --- Agent Specific Configurations ---
 
 # Community Manager (Eli5)
 COMMUNITY_MANAGER_DISCORD_APPLICATION_ID=your_discord_app_id
 COMMUNITY_MANAGER_DISCORD_API_TOKEN=your_discord_bot_token
-
-# Developer Relations (Eddy)
-DEV_REL_DISCORD_APPLICATION_ID=your_discord_app_id
-DEV_REL_DISCORD_API_TOKEN=your_discord_bot_token
-DEVREL_IMPORT_KNOWLEDGE=true # Set to false to disable knowledge base loading on startup
-
-# Liaison (Ruby)
-LIAISON_DISCORD_APPLICATION_ID=your_discord_app_id
-LIAISON_DISCORD_API_TOKEN=your_discord_bot_token
 
 # Project Manager (Jimmy)
 PROJECT_MANAGER_DISCORD_APPLICATION_ID=your_discord_app_id
@@ -84,20 +76,15 @@ PROJECT_MANAGER_TELEGRAM_BOT_TOKEN=your_telegram_bot_token
 # Social Media Manager (Laura)
 SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID=your_discord_app_id
 SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN=your_discord_bot_token
-# Twitter credentials for Laura (Social Media Manager)
-TWITTER_USERNAME=your_twitter_username
-TWITTER_EMAIL=your_twitter_email
-TWITTER_PASSWORD=your_twitter_password
-TWITTER_2FA_SECRET=your_twitter_2fa_secret # Optional, if 2FA is enabled
-
-# Note: If an agent uses a platform (e.g., Telegram) but its specific token is not provided,
-# that agent might not be able to use that platform's features or might be disabled if
-# the platform is critical for its core function and no alternatives are configured.
+SOCIAL_MEDIA_MANAGER_TWITTER_USERNAME=your_twitter_username
+SOCIAL_MEDIA_MANAGER_TWITTER_EMAIL=your_twitter_email
+SOCIAL_MEDIA_MANAGER_TWITTER_PASSWORD=your_twitter_password
 ```
 
 **Important:**
-*   Ensure that at least one communication platform (Discord or Telegram) is correctly configured with its respective API tokens for each agent you intend to run. If an agent is configured to use a platform but lacks the necessary tokens, it may be disabled or have limited functionality.
-*   The `src/index.ts` file filters agents based on the availability of required environment variables for their configured communication plugins.
+*   `src/index.ts` filters agents based on the presence of platform secrets for the plugins they declare.
+*   Passing that filter does not guarantee every non-platform dependency is configured; agents can still need additional settings at runtime.
+*   If you only want a subset of agents, pass explicit flags instead of relying on the default boot behavior.
 
 ## Running the Project
 
@@ -109,11 +96,11 @@ To run all agents that have their required environment variables configured:
 bun src/index.ts
 ```
 
-The application will automatically detect and initialize agents for which the necessary API keys and tokens are provided in the `.env` file.
+The application filters agents based on whether their configured Discord and Telegram plugins have the platform secrets they need.
 
 ### Running Specific Agents
 
-You can run a subset of agents by providing their names as command-line flags. The agent names for flags correspond to the keys used when defining them in `src/index.ts`.
+You can run a subset of agents by providing their names as command-line flags. The flag names correspond to the keys used in `src/index.ts`.
 
 Available agent flags:
 *   `--communityManager`
@@ -122,10 +109,10 @@ Available agent flags:
 *   `--projectManager`
 *   `--socialMediaManager`
 
-Example: To run only the Developer Relations (Eddy) and Project Manager (Jimmy) agents:
+Example:
 
 ```bash
-bun src/index.ts --devRel --projectManager
+bun src/index.ts --projectManager
 ```
 
 If you provide flags for agents whose environment variables are not correctly set up, those agents will not start.
@@ -248,7 +235,7 @@ The `src/loadTest/` directory contains a suite for testing agent scalability.
 *   [Bun](https://bun.sh/): Fast JavaScript runtime, bundler, and package manager.
 *   [TypeScript](https://www.typescriptlang.org/): Superset of JavaScript adding static types.
 *   [Discord.js](https://discord.js.org/): Library for interacting with the Discord API.
-*   Various ElizaOS plugins for SQL, LLMs (OpenAI, Anthropic), platform integrations (Discord, Twitter, Telegram), and utility functions.
+*   Various ElizaOS plugins for SQL, LLMs (OpenAI, Anthropic, OpenRouter), platform integrations (Discord, Telegram, Twitter/X), and utility functions.
 
 ## Contributing
 
