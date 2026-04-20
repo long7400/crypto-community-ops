@@ -60,6 +60,7 @@ interface ExtendedInteraction {
     content: string;
     ephemeral?: boolean;
   }) => Promise<unknown>;
+  callback?: (response: { text: string }) => Promise<unknown>;
   user?: User;
   member?: { user?: { id: string } };
   selections?: {
@@ -75,13 +76,6 @@ interface ExtendedInteraction {
   guildId?: string; // Added for server ID
   roomId?: UUID | string;
 }
-
-type DiscordResponsePayload = {
-  type: "REPLY";
-  content: string;
-  ephemeral: boolean;
-  interaction: ExtendedInteraction;
-};
 
 interface DiscordService extends Service {
   client: {
@@ -126,16 +120,17 @@ export class CheckInService extends Service {
       return;
     }
 
-    logger.warn(
-      `No direct interaction reply methods found for ${interaction.customId}; sending callback-style response`,
-    );
+    if (interaction.callback) {
+      logger.warn(
+        `No direct interaction reply methods found for ${interaction.customId}; using callback response`,
+      );
+      await interaction.callback({ text: content });
+      return;
+    }
 
-    await this.runtime.emitEvent("DISCORD_RESPONSE", {
-      type: "REPLY",
-      content,
-      ephemeral,
-      interaction,
-    } satisfies DiscordResponsePayload);
+    logger.warn(
+      `No interaction response path found for ${interaction.customId}`,
+    );
   }
 
   async start(): Promise<void> {

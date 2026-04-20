@@ -1,4 +1,10 @@
-import { createUniqueUuid, type IAgentRuntime, logger } from "@elizaos/core";
+import {
+  createUniqueUuid,
+  type IAgentRuntime,
+  logger,
+  type Memory,
+  type State,
+} from "@elizaos/core";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { recordCheckInAction } from "./actions/checkInCreate";
 import { fetchCheckInSchedules } from "./actions/checkInList";
@@ -583,6 +589,43 @@ describe("team coordinator shared storage", () => {
     ]);
   });
 
+  it("prefers Telegram usernames when formatting Telegram team members", async () => {
+    const runtime = {
+      agentId: "agent-id",
+      getMemories: vi.fn().mockResolvedValue([
+        {
+          content: {
+            type: "store-team-members-memory",
+            config: {
+              serverId: "server-123",
+              teamMembers: [
+                {
+                  section: "DevRel",
+                  tgName: "@alice_tg",
+                  discordName: "@alice_discord",
+                  updatesFormat: ["Q1"],
+                },
+              ],
+            },
+          },
+        },
+      ]),
+    } as unknown as IAgentRuntime;
+
+    const service = new TeamUpdateTrackerService(runtime);
+
+    await expect(
+      service.getTeamMembers("server-123", "telegram"),
+    ).resolves.toEqual([
+      {
+        username: "@alice_tg",
+        section: "DevRel",
+        platform: "telegram",
+        updatesFormat: ["Q1"],
+      },
+    ]);
+  });
+
   it("ignores incomplete persisted schedules before returning check-in schedules", async () => {
     const runtime = {
       getMemories: vi.fn().mockResolvedValue([
@@ -762,8 +805,9 @@ describe("team coordinator interaction responses", () => {
     vi.restoreAllMocks();
   });
 
-  it("falls back to a runtime event response when reply methods are unavailable", async () => {
+  it("uses interaction callback responses when reply methods are unavailable", async () => {
     const emitEvent = vi.fn().mockResolvedValue(undefined);
+    const callback = vi.fn().mockResolvedValue(undefined);
     const runtime = {
       agentId: "agent-id",
       emitEvent,
@@ -772,18 +816,18 @@ describe("team coordinator interaction responses", () => {
     const service = new CheckInService(runtime);
 
     await (service as any).respondToInteraction(
-      { customId: "submit_checkin_schedule", roomId: "room-123" },
+      {
+        customId: "submit_checkin_schedule",
+        roomId: "room-123",
+        callback,
+      },
       "Ack",
       true,
     );
 
-    expect(emitEvent).toHaveBeenCalledTimes(1);
-    expect(emitEvent).toHaveBeenCalledWith("DISCORD_RESPONSE", {
-      type: "REPLY",
-      content: "Ack",
-      ephemeral: true,
-      interaction: { customId: "submit_checkin_schedule", roomId: "room-123" },
-    });
+    expect(callback).toHaveBeenCalledTimes(1);
+    expect(callback).toHaveBeenCalledWith({ text: "Ack" });
+    expect(emitEvent).not.toHaveBeenCalled();
   });
 });
 
@@ -850,12 +894,12 @@ describe("team coordinator check-in creation", () => {
         serverId: "server-123",
         isAdmin: true,
       },
-    } as State;
+    } as unknown as State;
     const message = {
       roomId: "room-1",
       entityId: "user-1",
       content: { text: "Record Check-in details", source: "discord" },
-    } as Memory;
+    } as unknown as Memory;
 
     const result = await recordCheckInAction.handler(
       runtime,
@@ -865,8 +909,9 @@ describe("team coordinator check-in creation", () => {
       callback,
     );
 
-    expect(result.success).toBe(false);
-    expect(result.error).toContain("Unknown updates channel");
+    expect(result).toBeDefined();
+    expect(result?.success).toBe(false);
+    expect(result?.error).toContain("Unknown updates channel");
     expect(callback).toHaveBeenCalledWith(
       expect.objectContaining({
         text: expect.stringContaining(
