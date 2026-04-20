@@ -164,3 +164,4 @@ dist/
 openspec/.vector-search.db*
 /.elizadb-test/
 /.agents/
+.gitnexus

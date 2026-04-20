@@ -50,6 +50,7 @@ export function createTelegramRuntimeMock(overrides: Record<string, any> = {}) {
 			return undefined;
 		}),
 		useModel: vi.fn(),
+		updateWorld: vi.fn().mockResolvedValue(undefined),
 		ensureRoomExists: vi.fn().mockResolvedValue(undefined),
 		createMemory: vi.fn().mockResolvedValue(undefined),
 		getRoom: vi.fn(),
