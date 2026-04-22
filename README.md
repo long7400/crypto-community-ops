@@ -120,6 +120,12 @@ rules/
 - Discord and Telegram platform secrets are agent-specific in `.env.example`.
 - Eli5 Telegram uses `COMMUNITY_MANAGER_TELEGRAM_BOT_TOKEN`; keep it dedicated
   to avoid Telegram `409 Conflict` issues.
+- Eli5 community moderation settings are stored per world under
+  `COMMUNITY_MODERATION`. Telegram-specific options live under
+  `platforms.telegram`; future Discord options must live under
+  `platforms.discord`. Defaults run in dry-run mode until explicitly changed.
+  Use Telegram admin commands such as `/eli5 moderation settings` and
+  `/eli5 dry-run off` to inspect or update the first settings.
 - Do not commit `.env`, generated secrets, or logs containing tokens.
 
 ## Testing Notes

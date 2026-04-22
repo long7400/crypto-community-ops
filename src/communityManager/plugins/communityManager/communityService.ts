@@ -11,6 +11,7 @@ import {
   type World,
 } from "@elizaos/core";
 import dedent from "dedent";
+import { mergeCommunityModerationSettings } from "./moderation/defaults";
 import { ServiceType } from "./types";
 
 export class CommunityManagerService extends Service {
@@ -205,8 +206,16 @@ export class CommunityManagerService extends Service {
       logger.warn(`World not found for worldId: ${worldId}`);
       return;
     }
-    const shouldGreetUser =
+    const rawCommunityModerationSettings =
+      world.metadata?.settings?.["COMMUNITY_MODERATION"]?.value;
+    const telegramModerationSettings = rawCommunityModerationSettings
+      ? mergeCommunityModerationSettings(rawCommunityModerationSettings)
+      : undefined;
+    const legacyShouldGreet =
       world.metadata?.settings?.["SHOULD_GREET_NEW_PERSONS"]?.value;
+    const shouldGreetUser =
+      telegramModerationSettings?.platforms.telegram.greeting.enabled ??
+      legacyShouldGreet;
 
     if (
       !(
@@ -218,20 +227,27 @@ export class CommunityManagerService extends Service {
       return;
     }
 
-    const greetingMsgSettings =
-      world.metadata?.settings?.["GREETING_MESSAGE"]?.value;
-
     const userName =
       newMember.first_name +
         (newMember.last_name ? ` ${newMember.last_name}` : "") ||
       newMember.username ||
       "friend";
 
-    const greetingMessage = await this.getGreetingMessage(
-      runtime,
-      userName,
-      greetingMsgSettings,
-    );
+    const configuredTemplate =
+      telegramModerationSettings?.platforms.telegram.greeting.template?.trim();
+
+    const greetingMessage = configuredTemplate
+      ? configuredTemplate
+          .replace("{displayName}", userName)
+          .replace(
+            "{username}",
+            newMember.username ? `@${newMember.username}` : userName,
+          )
+      : await this.getGreetingMessage(
+          runtime,
+          userName,
+          world.metadata?.settings?.["GREETING_MESSAGE"]?.value,
+        );
 
     const welcomeText =
       greetingMessage ||
