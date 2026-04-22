@@ -1,8 +1,10 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
 	DEFAULT_COMMUNITY_MODERATION_SETTINGS,
 	mergeCommunityModerationSettings,
 } from "../src/communityManager/plugins/communityManager/moderation/defaults";
+import { isTelegramModerationAdmin } from "../src/communityManager/plugins/communityManager/moderation/adminAuth";
+import { parseTelegramModerationAdminCommand } from "../src/communityManager/plugins/communityManager/moderation/adminConfig";
 import { CommunityModerationSettingsRepository } from "../src/communityManager/plugins/communityManager/moderation/settingsRepository";
 
 describe("Community moderation settings contracts", () => {
@@ -87,5 +89,78 @@ describe("CommunityModerationSettingsRepository", () => {
 			false,
 		);
 		expect(world.metadata.settings.COMMUNITY_MODERATION.value.version).toBe(1);
+	});
+});
+
+describe("parseTelegramModerationAdminCommand", () => {
+	it("parses dry-run toggle commands", () => {
+		expect(parseTelegramModerationAdminCommand("/eli5 dry-run off")).toEqual({
+			type: "patch-settings",
+			patch: { dryRun: false },
+		});
+		expect(parseTelegramModerationAdminCommand("/eli5 dry-run on")).toEqual({
+			type: "patch-settings",
+			patch: { dryRun: true },
+		});
+	});
+
+	it("parses settings view commands", () => {
+		expect(
+			parseTelegramModerationAdminCommand("/eli5 moderation settings"),
+		).toEqual({
+			type: "show-settings",
+		});
+	});
+
+	it("parses JSON patch commands for full settings control without a dashboard", () => {
+		expect(
+			parseTelegramModerationAdminCommand(
+				'/eli5 moderation set-json {"moderation":{"resetAfterDays":14}}',
+			),
+		).toEqual({
+			type: "patch-settings",
+			patch: { moderation: { resetAfterDays: 14 } },
+		});
+	});
+
+	it("ignores unrelated text", () => {
+		expect(parseTelegramModerationAdminCommand("hello")).toEqual({
+			type: "ignore",
+		});
+	});
+});
+
+describe("isTelegramModerationAdmin", () => {
+	it("allows configured Telegram admin user IDs", async () => {
+		await expect(
+			isTelegramModerationAdmin(
+				{ getService: vi.fn() } as any,
+				{ channelId: "-100123", userId: "777" } as any,
+				mergeCommunityModerationSettings({
+					platforms: { telegram: { adminUserIds: ["777"] } },
+				}),
+			),
+		).resolves.toBe(true);
+	});
+
+	it("allows Telegram chat administrators returned by getChatMember", async () => {
+		const getChatMember = vi.fn().mockResolvedValue({
+			status: "administrator",
+			can_restrict_members: true,
+		});
+		const runtime: any = {
+			getService: () => ({
+				bot: { telegram: { getChatMember } },
+			}),
+		};
+
+		await expect(
+			isTelegramModerationAdmin(
+				runtime,
+				{ channelId: "-100123", userId: "777" } as any,
+				DEFAULT_COMMUNITY_MODERATION_SETTINGS,
+			),
+		).resolves.toBe(true);
+		expect(getChatMember).toHaveBeenCalledWith("-100123", "777");
 	});
 });

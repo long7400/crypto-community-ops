@@ -14,6 +14,10 @@ export function createTelegramRuntimeMock(overrides: Record<string, any> = {}) {
 	const eventHandlers = new Map<string, (...args: any[]) => any>();
 	const telegramSendMessage = vi.fn().mockResolvedValue(undefined);
 	const telegramRestrictChatMember = vi.fn().mockResolvedValue(undefined);
+	const telegramGetChatMember = vi.fn().mockResolvedValue({
+		status: "administrator",
+		can_restrict_members: true,
+	});
 
 	const runtime: any = {
 		agentId: "agent-id",
@@ -40,8 +44,10 @@ export function createTelegramRuntimeMock(overrides: Record<string, any> = {}) {
 						sendMessage: telegramSendMessage,
 					},
 					bot: {
+						botInfo: { id: 999 },
 						telegram: {
 							restrictChatMember: telegramRestrictChatMember,
+							getChatMember: telegramGetChatMember,
 						},
 					},
 				};
@@ -50,6 +56,9 @@ export function createTelegramRuntimeMock(overrides: Record<string, any> = {}) {
 			return undefined;
 		}),
 		useModel: vi.fn(),
+		getWorld: vi.fn(),
+		getMemories: vi.fn().mockResolvedValue([]),
+		getSetting: vi.fn(),
 		updateWorld: vi.fn().mockResolvedValue(undefined),
 		ensureRoomExists: vi.fn().mockResolvedValue(undefined),
 		createMemory: vi.fn().mockResolvedValue(undefined),
@@ -62,5 +71,6 @@ export function createTelegramRuntimeMock(overrides: Record<string, any> = {}) {
 		eventHandlers,
 		telegramSendMessage,
 		telegramRestrictChatMember,
+		telegramGetChatMember,
 	};
 }

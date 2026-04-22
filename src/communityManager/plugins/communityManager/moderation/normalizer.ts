@@ -53,14 +53,19 @@ export function normalizeTelegramMessagePayload(
 export function normalizeTelegramMemoryPayload(
 	payload: any,
 ): ModerationMessage | null {
-	const memory = payload.message;
+	const memory = payload.message ?? payload;
 	const room = payload.state?.data?.room;
 	const text = memory.content?.text;
 	const channelId =
-		room?.channelId ?? room?.serverId ?? memory.metadata?.fromId ?? undefined;
+		room?.channelId ??
+		room?.serverId ??
+		memory.metadata?.chatId ??
+		memory.metadata?.fromId ??
+		undefined;
 	const communityId = room?.serverId ?? channelId;
 	const worldId = room?.worldId ?? payload.worldId;
-	const messageId = memory.metadata?.sourceId ?? memory.id;
+	const messageId =
+		memory.metadata?.sourceId ?? memory.metadata?.messageId ?? memory.id;
 
 	if (!channelId || !communityId || !worldId || !memory.roomId || !messageId) {
 		return null;
@@ -73,16 +78,18 @@ export function normalizeTelegramMemoryPayload(
 		platform: "telegram",
 		communityId: String(communityId),
 		channelId: String(channelId),
-		channelType: room?.type,
-		threadId: room?.metadata?.threadId,
+		channelType: room?.type ?? memory.metadata?.chatType,
+		threadId: room?.metadata?.threadId ?? memory.metadata?.threadId,
 		roomId: String(memory.roomId),
 		worldId: String(worldId),
 		messageId: String(messageId),
-		userId: String(memory.entityId),
-		username: memory.metadata?.entityUserName,
+		userId: String(memory.metadata?.fromId ?? memory.entityId),
+		username: memory.metadata?.entityUserName ?? memory.metadata?.username,
 		displayName:
+			memory.metadata?.displayName ??
 			memory.metadata?.entityName ??
 			memory.metadata?.entityUserName ??
+			memory.metadata?.username ??
 			String(memory.entityId),
 		text: text.trim(),
 		createdAt: memory.createdAt ?? Date.now(),
