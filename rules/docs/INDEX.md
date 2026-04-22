@@ -13,6 +13,7 @@ task briefs, execution plans, decisions, templates, and workflow references.
 - `../../PRODUCT_SENSE.md`
 - `../../QUALITY_GATES.md`
 - `../../SECURITY.md`
+- `../../TDD_RULES.md`
 - `../../PLANS.md`
 
 ## Workflows
@@ -28,6 +29,10 @@ task briefs, execution plans, decisions, templates, and workflow references.
 - `templates/ADR_TEMPLATE.md`: architecture or design decision record
 - `templates/PR_REVIEW_TEMPLATE.md`: review checklist and findings format
 - `templates/RETRO_TEMPLATE.md`: short retrospective after larger work
+
+## Testing Reference
+
+- `testing/TDD_EXAMPLES.md`: optional Vitest examples for common test patterns in this repo
 
 ## Working areas
 

@@ -21,7 +21,8 @@ Coding agents should start with these root docs:
 3. `PRODUCT_SENSE.md`
 4. `QUALITY_GATES.md`
 5. `SECURITY.md`
-6. `PLANS.md` for long-running or risky work
+6. `TDD_RULES.md`
+7. `PLANS.md` for long-running or risky work
 
 Reusable workflow docs, templates, and prompt starters live under `rules/docs/`
 and `rules/prompts/`.

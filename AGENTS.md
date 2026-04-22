@@ -19,8 +19,9 @@ For every non-trivial task, read these in order:
 2. `ARCHITECTURE.md`
 3. `PRODUCT_SENSE.md`
 4. `QUALITY_GATES.md`
-5. `SECURITY.md`
-6. Relevant supporting docs under `rules/docs/`
+5. `TDD_RULES.md`
+6. `SECURITY.md`
+7. Relevant supporting docs under `rules/docs/`
 
 If there is an active brief or plan for the task, read that before editing code.
 
@@ -164,80 +165,6 @@ with Node.js built-ins where possible.
 
 If those MCP tools are unavailable, use local shell commands carefully and keep
 output compact.
-
-## GitNexus - Code Intelligence
-
-This project is indexed by GitNexus as `crypto-community-ops` (1240 symbols,
-1974 relationships, 40 execution flows). Use GitNexus tools to understand code,
-assess impact, and navigate safely when they are available.
-
-If any GitNexus tool warns the index is stale, run `npx gitnexus analyze`.
-
-Always:
-
-- Run impact analysis before editing any function, class, or method symbol.
-- Run `gitnexus_detect_changes()` before committing to verify affected scope.
-- Warn the user if impact analysis returns HIGH or CRITICAL risk before proceeding.
-- Use `gitnexus_query({query: "concept"})` when exploring unfamiliar code.
-- Use `gitnexus_context({name: "symbolName"})` for full context on a symbol.
-
-Never:
-
-- Edit a function, class, or method without first running impact analysis.
-- Ignore HIGH or CRITICAL risk warnings.
-- Rename symbols with find-and-replace; use `gitnexus_rename`.
-- Commit without checking affected scope.
-
-Resources:
-
-| Resource | Use for |
-| --- | --- |
-| `gitnexus://repo/crypto-community-ops/context` | Codebase overview, check index freshness |
-| `gitnexus://repo/crypto-community-ops/clusters` | All functional areas |
-| `gitnexus://repo/crypto-community-ops/processes` | All execution flows |
-| `gitnexus://repo/crypto-community-ops/process/{name}` | Step-by-step execution trace |
-
-Skill files:
-
-| Task | Read this skill file |
-| --- | --- |
-| Understand architecture / "How does X work?" | `.claude/skills/gitnexus/gitnexus-exploring/SKILL.md` |
-| Blast radius / "What breaks if I change X?" | `.claude/skills/gitnexus/gitnexus-impact-analysis/SKILL.md` |
-| Trace bugs / "Why is X failing?" | `.claude/skills/gitnexus/gitnexus-debugging/SKILL.md` |
-| Rename / extract / split / refactor | `.claude/skills/gitnexus/gitnexus-refactoring/SKILL.md` |
-| Tools, resources, schema reference | `.claude/skills/gitnexus/gitnexus-guide/SKILL.md` |
-| Index, status, clean, wiki CLI commands | `.claude/skills/gitnexus/gitnexus-cli/SKILL.md` |
-
-## Persistent Memory (ICM) - Mandatory
-
-This project uses ICM for persistent memory across sessions. Use it actively.
-
-Recall before starting work:
-
-```bash
-icm recall "query"
-icm recall "query" -t "topic-name"
-icm recall-context "query" --limit 5
-```
-
-Store memory when any of the following happens:
-
-1. Error resolved: `icm store -t errors-resolved -c "description" -i high -k "keyword1,keyword2"`
-2. Architecture/design decision: `icm store -t decisions-crypto-community-ops -c "description" -i high`
-3. User preference discovered: `icm store -t preferences -c "description" -i critical`
-4. Significant task completed: `icm store -t context-crypto-community-ops -c "summary of work done" -i high`
-5. Conversation exceeds about 20 tool calls without a store: store a progress summary.
-
-Do this before responding to the user. Do not store trivial details, info already
-in repo docs, or ephemeral logs.
-
-Other commands:
-
-```bash
-icm update <id> -c "updated content"
-icm health
-icm topics
-```
 
 ## If You Are Unsure
 

@@ -32,7 +32,7 @@ Every non-trivial change should satisfy all relevant items below:
 
 ## Testing expectations
 
-Suggested default expectations:
+Suggested default expectations (see `TDD_RULES.md` for detailed requirements):
 
 - Add tests for new behavior.
 - Update tests for changed behavior.

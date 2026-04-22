@@ -81,4 +81,5 @@ List the areas where changes are easy to get wrong.
 - `PRODUCT_SENSE.md`
 - `QUALITY_GATES.md`
 - `SECURITY.md`
+- `TDD_RULES.md`
 - `rules/docs/INDEX.md`
