@@ -1,247 +1,138 @@
 # The Org - Multi-Agent System
 
-[![ElizaOS](https://img.shields.io/badge/Powered%20by-ElizaOS-blueviolet)](https://elizaos.com) [![Bun](https://img.shields.io/badge/Runtime-Bun-yellowgreen)](https://bun.sh/) [![TypeScript](https://img.shields.io/badge/Language-TypeScript-blue)](https://www.typescriptlang.org/)
+The Org is an elizaOS TypeScript project that packages specialized agents for
+community operations, developer relations, project coordination, social media,
+and cross-community liaison work.
 
-The Org is a sophisticated multi-agent system built using the ElizaOS framework. It features a collection of specialized AI agents designed to handle various organizational functions, including community management, developer relations, project coordination, social media management, and inter-organizational liaison.
+## Agents
 
-## Features
+- Eli5 (`src/communityManager/`): community onboarding, greetings, moderation, and Telegram/Discord flows.
+- Eddy (`src/devRel/`): developer support, documentation help, and code examples.
+- Ruby (`src/liaison/`): cross-community awareness, liaison work, and reporting.
+- Jimmy (`src/projectManager/`): project management, check-ins, reports, and team coordination.
+- Laura (`src/socialMediaManager/`): social content drafting, approval support, and publishing workflows.
 
-*   **Modular Agent-Based Architecture**: Easily extendable with new agents and capabilities.
-*   **Specialized AI Agents**:
-    *   **Eli5 (Community Manager)**: Welcomes users, moderates discussions, and manages community health.
-    *   **Eddy (Developer Relations)**: Provides documentation support, code examples, and technical assistance.
-    *   **Ruby (Community Liaison)**: Facilitates cross-community knowledge sharing and identifies synergies.
-    *   **Jimmy (Project Manager)**: Coordinates projects, tracks progress, and manages team check-ins.
-    *   **Laura (Social Media Manager)**: Crafts and publishes content across social media platforms.
-*   **Multi-Platform Integration**: Seamlessly interacts with Discord, Telegram, and Twitter.
-*   **Persistent Memory & State**: Utilizes SQL (via `@elizaos/plugin-sql`) for robust data storage.
-*   **Advanced LLM Integration**: Supports models from OpenAI, Anthropic, and local AI setups.
-*   **Dynamic Onboarding & Configuration**: Flexible system for setting up and customizing agents.
-*   **Comprehensive Load Testing Suite**: Tools to evaluate and ensure agent scalability.
+## Agent Working Rules
+
+Coding agents should start with these root docs:
+
+1. `AGENTS.md`
+2. `ARCHITECTURE.md`
+3. `PRODUCT_SENSE.md`
+4. `QUALITY_GATES.md`
+5. `SECURITY.md`
+6. `PLANS.md` for long-running or risky work
+
+Reusable workflow docs, templates, and prompt starters live under `rules/docs/`
+and `rules/prompts/`.
 
 ## Prerequisites
 
-Before you begin, ensure you have the following installed:
+- Bun
+- Node.js
+- A `.env` file copied from `.env.example`
+- Optional PostgreSQL/Neon connection for local DB-backed runtime use
 
-*   [Bun](https://bun.sh/) (this repo is run locally with Bun)
-*   [Node.js](https://nodejs.org/) (required by Bun/ElizaOS tooling)
-*   Access to a [PostgreSQL](https://www.postgresql.org/) database. For local DB-backed runs, use a Neon direct/dev branch connection string via `POSTGRES_URL`.
-## Getting Started
-
-1.  **Clone the repository:**
-    ```bash
-    git clone <your-repository-url>
-    cd crypto-community-ops
-    ```
-
-2.  **Install dependencies with Bun:**
-    ```bash
-    bun install
-    ```
-
-3.  **Set up environment variables:**
-    Copy `.env.example` to `.env` in the repo root, then fill in only the integrations you plan to run locally.
-
-4.  **Run the application:**
-    ```bash
-    bun src/index.ts
-    ```
-    This starts any agents whose platform configuration passes the checks in `src/index.ts`. To run specific agents, see [Running Specific Agents](#running-specific-agents).
-
-## Configuration (`.env` file)
-
-The Org uses a `.env` file at the repo root to manage environment-specific configuration.
-
-Create it by copying `.env.example` and filling in the values you actually need for your local run:
+## Setup
 
 ```bash
+bun install
 cp .env.example .env
 ```
 
-Example `.env` values:
+Fill in only the platform and model secrets needed for the agents you plan to
+run. `src/index.ts` filters agents based on configured platform secrets.
 
-```env
-OPENAI_API_KEY=your_openai_api_key
-ANTHROPIC_API_KEY=your_anthropic_api_key
+## Running
 
-# Community Manager (Eli5)
-COMMUNITY_MANAGER_DISCORD_APPLICATION_ID=your_discord_app_id
-COMMUNITY_MANAGER_DISCORD_API_TOKEN=your_discord_bot_token
-
-# Project Manager (Jimmy)
-PROJECT_MANAGER_DISCORD_APPLICATION_ID=your_discord_app_id
-PROJECT_MANAGER_DISCORD_API_TOKEN=your_discord_bot_token
-PROJECT_MANAGER_TELEGRAM_BOT_TOKEN=your_telegram_bot_token
-
-# Social Media Manager (Laura)
-SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID=your_discord_app_id
-SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN=your_discord_bot_token
-SOCIAL_MEDIA_MANAGER_TWITTER_USERNAME=your_twitter_username
-SOCIAL_MEDIA_MANAGER_TWITTER_EMAIL=your_twitter_email
-SOCIAL_MEDIA_MANAGER_TWITTER_PASSWORD=your_twitter_password
-```
-
-**Important:**
-*   `src/index.ts` filters agents based on the presence of platform secrets for the plugins they declare.
-*   Passing that filter does not guarantee every non-platform dependency is configured; agents can still need additional settings at runtime.
-*   If you only want a subset of agents, pass explicit flags instead of relying on the default boot behavior.
-
-## Running the Project
-
-### Running All Available Agents
-
-To run all agents that have their required environment variables configured:
+Start the elizaOS dev runtime:
 
 ```bash
-bun src/index.ts
+bun run dev
 ```
 
-The application filters agents based on whether their configured Discord and Telegram plugins have the platform secrets they need.
-
-### Running Specific Agents
-
-You can run a subset of agents by providing their names as command-line flags. The flag names correspond to the keys used in `src/index.ts`.
-
-Available agent flags:
-*   `--communityManager`
-*   `--devRel`
-*   `--liaison`
-*   `--projectManager`
-*   `--socialMediaManager`
-
-Example:
+Start the production-style runtime:
 
 ```bash
+bun run start
+```
+
+Run specific agents by passing flags recognized by `src/index.ts`:
+
+```bash
+bun src/index.ts --communityManager
 bun src/index.ts --projectManager
 ```
 
-If you provide flags for agents whose environment variables are not correctly set up, those agents will not start.
+Available flags:
+
+- `--communityManager`
+- `--devRel`
+- `--liaison`
+- `--projectManager`
+- `--socialMediaManager`
+
+## Commands
+
+- Build: `bun run build`
+- Format check: `bun run format:check`
+- Apply formatting: `bun run format`
+- Typecheck: `bunx tsc -p tsconfig.json --noEmit`
+- Main project tests: `bun run test:the-org`
+- elizaOS test harness: `bun run test`
+- Community manager tests: `bun run test:communityManager`
+- DevRel tests: `bun run test:devRel`
+- Liaison tests: `bun run test:liaison`
+- Project manager tests: `bun run test:projectManager`
+- Social media manager tests: `bun run test:socialMediaManager`
+
+For a reasonable pre-merge pass:
+
+```bash
+bun run format:check && bunx tsc -p tsconfig.json --noEmit && bun run build && bun run test:the-org
+```
 
 ## Project Structure
 
-The project is organized as follows:
-
-```
-the-org/
-├── src/
-│   ├── assets/                  # Shared assets for all agents
-│   ├── communityManager/        # Eli5 - Community Manager Agent
-│   │   ├── actions/             # Custom actions for Eli5
-│   │   ├── assets/              # Assets specific to Eli5 (e.g., portrait.jpg)
-│   │   ├── plugins/             # Core plugins for Eli5
-│   │   │   └── communityManager/
-│   │   │       ├── actions/     # Plugin-specific actions (e.g., timeout.ts)
-│   │   │       ├── providers/   # Data providers (e.g., timeoutUserProvider.ts)
-│   │   │       ├── communityService.ts # Core service logic for the plugin
-│   │   │       ├── types.ts
-│   │   │       └── index.ts     # Plugin definition
-│   │   ├── index.ts             # Eli5 agent definition & character
-│   │   └── spec.md              # (If exists) Agent specification
-│   ├── devRel/                  # Eddy - Developer Relations Agent
-│   │   ├── assets/
-│   │   ├── index.ts
-│   │   └── spec.md
-│   ├── liaison/                 # Ruby - Community Liaison Agent
-│   │   ├── assets/
-│   │   ├── index.ts
-│   │   └── spec.md
-│   ├── loadTest/                # Agent Load Testing Suite
-│   │   ├── __tests__/
-│   │   ├── logs/                # Output logs from load tests
-│   │   ├── index.ts
-│   │   ├── service.ts
-│   │   ├── types.ts
-│   │   ├── utils.ts
-│   │   └── test-runner.js       # Script to execute load tests
-│   ├── projectManager/          # Jimmy - Project Manager Agent
-│   │   ├── assets/
-│   │   ├── plugins/
-│   │   │   └── team-coordinator/# Plugin for team coordination
-│   │   │       ├── actions/     # Team management actions
-│   │   │       ├── forms/       # Discord form definitions
-│   │   │       ├── services/    # Services (CheckInService, TeamUpdateTrackerService)
-│   │   │       ├── tasks.ts     # Background task definitions
-│   │   │       └── index.ts
-│   │   │   └── index.ts         # Aggregates team-coordinator plugins
-│   │   ├── types/               # TypeScript type definitions for Project Manager
-│   │   ├── utils/               # Utility functions (e.g., dateTime.ts)
-│   │   ├── index.ts
-│   │   └── spec.md
-│   ├── socialMediaManager/      # Laura - Social Media Manager Agent
-│   │   ├── actions/
-│   │   ├── assets/
-│   │   ├── index.ts
-│   │   └── spec.md
-│   ├── init.ts                  # Common character initialization logic for agents
-│   ├── index.ts                 # Main entry point, aggregates and exports all agents
-│   └── plugins.test.ts          # Vitest tests for ElizaOS plugins
-├── .env                         # Environment variables (create this file)
-├── bun.lockb                    # Bun lockfile
-├── package.json                 # Project dependencies and scripts
-└── README.md                    # This file
+```text
+src/
+  index.ts                         Project entrypoint and agent selection
+  init.ts                          Shared runtime/onboarding event wiring
+  communityManager/                Eli5 community manager
+  devRel/                          Eddy developer support
+  liaison/                         Ruby liaison
+  projectManager/                  Jimmy project manager and team coordinator plugin
+  socialMediaManager/              Laura social media manager
+  loadTest/                        Load testing service and scale tests
+  utils/                           Small shared helpers
+tests/
+  *.test.ts                        Vitest agent suites
+  test_suites/                     Shared test harnesses
+rules/
+  docs/                            Workflow docs, task briefs, plans, decisions, templates
+  prompts/                         Prompt starters for kickoff/review/follow-up
 ```
 
-## Available Agents
+## Configuration Notes
 
-*   **Eli5 (Community Manager)**:
-    *   Manages community interactions, welcomes new users, and handles moderation tasks such as user timeouts based on community guidelines.
-    *   Configured in `src/communityManager/`.
+- Model providers are enabled from env vars such as `OPENAI_API_KEY`,
+  `ANTHROPIC_API_KEY`, and `OPENROUTER_API_KEY`.
+- Discord and Telegram platform secrets are agent-specific in `.env.example`.
+- Eli5 Telegram uses `COMMUNITY_MANAGER_TELEGRAM_BOT_TOKEN`; keep it dedicated
+  to avoid Telegram `409 Conflict` issues.
+- Do not commit `.env`, generated secrets, or logs containing tokens.
 
-*   **Eddy (Developer Relations)**:
-    *   Assists developers by providing documentation-based support, generating code examples, and maintaining a knowledge base from project documentation and past interactions.
-    *   Configured in `src/devRel/`.
+## Testing Notes
 
-*   **Ruby (Community Liaison)**:
-    *   Monitors discussions across multiple community platforms (Discord, Telegram, Slack), identifies parallel conversations and shared interests, and generates topic-based reports to facilitate cross-community knowledge sharing.
-    *   Configured in `src/liaison/`.
-
-*   **Jimmy (Project Manager)**:
-    *   Manages projects, tracks progress through daily updates, coordinates team members (availability, check-ins), identifies blockers, and generates reports. Features a `team-coordinator` plugin for detailed team management.
-    *   Configured in `src/projectManager/`.
-
-*   **Laura (Social Media Manager)**:
-    *   Handles social media communications across Discord and Twitter. Crafts and posts approved content, manages media assets, and ensures brand consistency.
-    *   Configured in `src/socialMediaManager/`.
-
-## Testing
-
-The project uses [Vitest](https://vitest.dev/) for unit and integration testing.
-
-*   **Run all tests:**
-    ```bash
-    bun test
-    ```
-
-*   **Run tests for a specific file:**
-    ```bash
-    bun test src/plugins.test.ts
-    ```
-    (Replace with the path to the test file you want to run).
-
-*   **Plugin Tests**: `src/plugins.test.ts` contains tests specifically for the ElizaOS plugins used within the project.
-
-### Load Testing
-
-The `src/loadTest/` directory contains a suite for testing agent scalability.
-*   **To run the load tests:** Execute the `test-runner.js` script. This script orchestrates the execution of `scale.test.ts`.
-    ```bash
-    bun src/loadTest/test-runner.js
-    ```
-*   **Logs**: Detailed logs and summaries for each test configuration will be generated in the `src/loadTest/logs/` directory. These logs help identify breaking points and optimal configurations for agent scaling.
-
-## Key Technologies
-
-*   [ElizaOS](https://elizaos.com): The core framework for building multi-agent systems.
-*   [Bun](https://bun.sh/): Fast JavaScript runtime, bundler, and package manager.
-*   [TypeScript](https://www.typescriptlang.org/): Superset of JavaScript adding static types.
-*   [Discord.js](https://discord.js.org/): Library for interacting with the Discord API.
-*   Various ElizaOS plugins for SQL, LLMs (OpenAI, Anthropic, OpenRouter), platform integrations (Discord, Telegram, Twitter/X), and utility functions.
-
-## Contributing
-
-Contributions are welcome! Please feel free to open an issue to discuss a new feature or bug, or submit a pull request with your changes.
+- Add or update tests for changed behavior.
+- For Eli5 Telegram onboarding, prefer `tests/eli5Telegram.test.ts` and
+  `tests/test_suites/TelegramTestSuite.ts`.
+- For project manager team coordination, prefer focused tests near
+  `src/projectManager/plugins/team-coordinator/` plus the project manager suite
+  when behavior crosses the agent boundary.
+- `bun run lint` currently writes formatting; use `bun run format:check` when
+  you need a non-mutating check.
 
 ## License
 
-(Consider adding a license, e.g., MIT, Apache 2.0. If not specified, you can state "All rights reserved" or leave this section out.)
 This project is currently unlicensed.
