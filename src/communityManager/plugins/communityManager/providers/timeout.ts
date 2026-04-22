@@ -19,11 +19,9 @@ If any user is:
 - Using violent, hateful, or abusive language
 - Clearly violating community guidelines
 
-Then you **must** select the TIMEOUT_USER action and return the username of the person who should be timed out.
+Then consider the TIMEOUT_USER action only when an immediate manual moderation action is needed.
 
-only return the action if:
-- You are confident someone broke the rules, **and**
-- That person has **not already been punished**.
+For Telegram group automation, prefer the Telegram moderation evaluator because it applies configured warnings, mute escalation, dry-run mode, and audit logging through the policy runner.
 `;
 
     return {

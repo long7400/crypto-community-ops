@@ -327,6 +327,55 @@ describe("Eli5 Telegram E2E", () => {
     expect(runtime.createMemory).not.toHaveBeenCalled();
   });
 
+  it("uses COMMUNITY_MODERATION greeting settings for Telegram new member greetings", async () => {
+    const { runtime, eventHandlers } = createTelegramRuntimeMock({
+      adapter: {
+        getWorld: vi.fn().mockResolvedValue(
+          createTelegramWorld({
+            COMMUNITY_MODERATION: {
+              value: {
+                platforms: {
+                  telegram: {
+                    enabled: true,
+                    greeting: {
+                      enabled: true,
+                      template: "GM {displayName}, welcome to the builders room.",
+                    },
+                  },
+                },
+                moderation: {
+                  enabled: true,
+                },
+              },
+            },
+          }),
+        ),
+      },
+    });
+    const ctx = {
+      chat: { id: -100779 },
+      reply: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await CommunityManagerService.start(runtime);
+
+    await eventHandlers.get("TELEGRAM_ENTITY_JOINED")?.({
+      runtime,
+      entityId: "new-member-entity",
+      worldId: "world-1",
+      newMember: {
+        first_name: "Ada",
+        last_name: "Lovelace",
+        username: "ada",
+      },
+      ctx,
+    });
+
+    expect(ctx.reply).toHaveBeenCalledWith(
+      "GM Ada Lovelace, welcome to the builders room.",
+    );
+  });
+
   it("restricts resolvable Telegram moderation targets and records moderation memory", async () => {
     const { runtime, telegramRestrictChatMember } = createTelegramRuntimeMock({
       adapter: {
@@ -370,6 +419,7 @@ describe("Eli5 Telegram E2E", () => {
     );
 
     expect(result).toEqual({ success: true });
+    expect(timeoutUser.name).toBe("TIMEOUT_USER");
     expect(telegramRestrictChatMember).toHaveBeenCalledWith(
       "-100999",
       "telegram-user-99",

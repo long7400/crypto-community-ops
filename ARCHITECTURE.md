@@ -53,6 +53,11 @@ Typical examples:
 - configuration loading: `src/index.ts` and each agent `index.ts` load `dotenv` and map env vars into character settings.
 - onboarding: `src/init.ts` plus each agent's onboarding config.
 - Telegram community onboarding: `src/init.ts`, `src/communityManager/index.ts`, and Telegram tests in `tests/eli5Telegram.test.ts`.
+- Community moderation: `src/communityManager/plugins/communityManager/moderation/`
+  owns Eli5 moderation settings, platform normalization, the Telegram
+  always-run evaluator, classification, per-platform violation escalation,
+  enforcement adapters, and audit logging. LLM output may classify risk, but
+  mute/warning decisions must pass through the policy engine.
 - Discord onboarding: `src/init.ts`.
 - project check-ins and reports: `src/projectManager/plugins/team-coordinator/`.
 - testing harnesses: `tests/test_suites/` and `src/plugins.test.ts`.
