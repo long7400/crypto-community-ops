@@ -21,7 +21,7 @@ const baseMessage = {
 };
 
 describe("classifyMessageWithRules", () => {
-	it("flags obvious link spam", () => {
+	it("should flag obvious link spam when a message exceeds the link limit", () => {
 		const result = classifyMessageWithRules(
 			{
 				...baseMessage,
@@ -35,7 +35,7 @@ describe("classifyMessageWithRules", () => {
 		expect(result.signals).toContain("too_many_links");
 	});
 
-	it("flags repeated messages from recent user history", () => {
+	it("should flag repeated spam when recent history contains the same text", () => {
 		const result = classifyMessageWithRules(
 			baseMessage,
 			DEFAULT_COMMUNITY_MODERATION_SETTINGS,
@@ -46,7 +46,7 @@ describe("classifyMessageWithRules", () => {
 		expect(result.signals).toContain("repeated_message");
 	});
 
-	it("allows normal messages", () => {
+	it("should allow a normal message when no rule matches", () => {
 		const result = classifyMessageWithRules(
 			baseMessage,
 			DEFAULT_COMMUNITY_MODERATION_SETTINGS,
@@ -56,7 +56,7 @@ describe("classifyMessageWithRules", () => {
 		expect(result.category).toBe("safe");
 	});
 
-	it("flags message floods within one minute", () => {
+	it("should flag message flood when recent history exceeds the minute threshold", () => {
 		const now = Date.now();
 		const recentMessages = Array.from({ length: 8 }, (_, index) => ({
 			...baseMessage,
@@ -73,6 +73,19 @@ describe("classifyMessageWithRules", () => {
 
 		expect(result.category).toBe("spam");
 		expect(result.signals).toContain("message_flood");
+	});
+
+	it("should allow a message when mention count matches the configured maximum", () => {
+		const result = classifyMessageWithRules(
+			{
+				...baseMessage,
+				text: "@a @b @c @d @e @f",
+			},
+			DEFAULT_COMMUNITY_MODERATION_SETTINGS,
+			[],
+		);
+
+		expect(result.category).toBe("safe");
 	});
 });
 
@@ -96,6 +109,14 @@ describe("parseLlmModerationClassification", () => {
 
 		expect(result.category).toBe("safe");
 		expect(result.confidence).toBe(0);
+	});
+
+	it("should discard non-string signals when llm output mixes valid and invalid values", () => {
+		const result = parseLlmModerationClassification(
+			'{"category":"fud","severity":"medium","confidence":0.77,"reason":"panic","signals":["panic",7,null]}',
+		);
+
+		expect(result.signals).toEqual(["panic"]);
 	});
 });
 
@@ -187,6 +208,31 @@ describe("decideModerationAction", () => {
 		);
 
 		expect(decision.action).toBe("skip");
+	});
+
+	it("should reset offense count when the previous violation is older than the reset window", () => {
+		const decision = decideModerationAction(
+			DEFAULT_COMMUNITY_MODERATION_SETTINGS,
+			{
+				category: "spam",
+				severity: "medium",
+				confidence: 0.95,
+				reason: "link spam",
+				signals: ["too_many_links"],
+			},
+			{
+				platform: "telegram",
+				communityId: "-100123",
+				channelId: "-100123",
+				userId: "777",
+				category: "spam",
+				count: 3,
+				lastViolationAt: Date.now() - 31 * 24 * 60 * 60 * 1000,
+			},
+		);
+
+		expect(decision.offenseCount).toBe(1);
+		expect(decision.action).toBe("warn");
 	});
 });
 
