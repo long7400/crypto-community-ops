@@ -1,5 +1,18 @@
 import type { ModerationMessage } from "./types";
 
+type TelegramNormalizationContext = {
+  room?: {
+    worldId?: string;
+    serverId?: string;
+    channelId?: string;
+    metadata?: {
+      threadId?: string;
+      parentChatId?: string;
+    };
+  };
+  telegramUserId?: string;
+};
+
 export function normalizeTelegramMessagePayload(
   payload: any,
 ): ModerationMessage | null {
@@ -52,13 +65,15 @@ export function normalizeTelegramMessagePayload(
 
 export function normalizeTelegramMemoryPayload(
   payload: any,
+  context: TelegramNormalizationContext = {},
 ): ModerationMessage | null {
   const memory = payload.message ?? payload;
-  const room = payload.state?.data?.room;
+  const room = payload.state?.data?.room ?? context.room;
   const text = memory.content?.text;
   const channelId =
-    room?.channelId ??
     room?.serverId ??
+    room?.metadata?.parentChatId ??
+    room?.channelId ??
     memory.metadata?.chatId ??
     memory.metadata?.fromId ??
     undefined;
@@ -66,8 +81,21 @@ export function normalizeTelegramMemoryPayload(
   const worldId = room?.worldId ?? payload.worldId;
   const messageId =
     memory.metadata?.sourceId ?? memory.metadata?.messageId ?? memory.id;
+  const userId =
+    context.telegramUserId ??
+    memory.metadata?.telegramUserId ??
+    memory.metadata?.userId ??
+    (memory.metadata?.chatId ? memory.metadata?.fromId : undefined) ??
+    memory.entityId;
 
-  if (!channelId || !communityId || !worldId || !memory.roomId || !messageId) {
+  if (
+    !channelId ||
+    !communityId ||
+    !worldId ||
+    !memory.roomId ||
+    !messageId ||
+    !userId
+  ) {
     return null;
   }
   if (typeof text !== "string" || text.trim().length === 0) {
@@ -83,7 +111,7 @@ export function normalizeTelegramMemoryPayload(
     roomId: String(memory.roomId),
     worldId: String(worldId),
     messageId: String(messageId),
-    userId: String(memory.metadata?.fromId ?? memory.entityId),
+    userId: String(userId),
     username: memory.metadata?.entityUserName ?? memory.metadata?.username,
     displayName:
       memory.metadata?.displayName ??
