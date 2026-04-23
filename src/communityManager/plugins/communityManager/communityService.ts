@@ -212,7 +212,9 @@ export class CommunityManagerService extends Service {
       typeof rawCommunityModerationSettings === "object" &&
       rawCommunityModerationSettings !== null &&
       !Array.isArray(rawCommunityModerationSettings)
-        ? mergeCommunityModerationSettings(rawCommunityModerationSettings as any)
+        ? mergeCommunityModerationSettings(
+            rawCommunityModerationSettings as any,
+          )
         : undefined;
     const legacyShouldGreet =
       world.metadata?.settings?.["SHOULD_GREET_NEW_PERSONS"]?.value;

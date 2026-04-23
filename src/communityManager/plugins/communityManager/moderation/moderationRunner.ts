@@ -181,9 +181,7 @@ export class ModerationRunner {
     return await this.runtime.getRoom(memory.roomId as any);
   }
 
-  private async getTelegramUserId(
-    memory: Memory,
-  ): Promise<string | undefined> {
+  private async getTelegramUserId(memory: Memory): Promise<string | undefined> {
     const entityId = (memory as any).entityId;
     if (!entityId || typeof this.runtime.getEntityById !== "function") {
       return undefined;
