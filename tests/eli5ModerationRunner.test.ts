@@ -1,8 +1,45 @@
-import { describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { normalizeTelegramMessagePayload } from "../src/communityManager/plugins/communityManager/moderation/normalizer";
 import { TelegramModerationAdapter } from "../src/communityManager/plugins/communityManager/moderation/telegramAdapter";
 import { ModerationRunner } from "../src/communityManager/plugins/communityManager/moderation/moderationRunner";
 import { telegramModerationEvaluator } from "../src/communityManager/plugins/communityManager/moderation/telegramModerationEvaluator";
+import { callTelegramApi } from "../src/communityManager/plugins/communityManager/moderation/telegramErrors";
+
+describe("callTelegramApi", () => {
+	beforeEach(() => {
+		vi.useFakeTimers();
+	});
+
+	afterEach(() => {
+		vi.useRealTimers();
+	});
+
+	it("should retry once when Telegram returns 429", async () => {
+		const operation = vi
+			.fn()
+			.mockRejectedValueOnce({
+				response: { error_code: 429, parameters: { retry_after: 1 } },
+			})
+			.mockResolvedValueOnce("ok");
+
+		const resultPromise = callTelegramApi(operation, "retry test");
+
+		await vi.advanceTimersByTimeAsync(1000);
+
+		await expect(resultPromise).resolves.toBe("ok");
+		expect(operation).toHaveBeenCalledTimes(2);
+	});
+
+	it("should rethrow immediately when Telegram returns 400", async () => {
+		const error = {
+			response: { error_code: 400, description: "bad request" },
+		};
+		const operation = vi.fn().mockRejectedValue(error);
+
+		await expect(callTelegramApi(operation, "bad request")).rejects.toBe(error);
+		expect(operation).toHaveBeenCalledTimes(1);
+	});
+});
 
 describe("normalizeTelegramMessagePayload", () => {
 	it("should normalize raw Telegram message payloads when Telegram provides chat and sender data", () => {

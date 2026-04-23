@@ -123,6 +123,16 @@ describe("parseTelegramModerationAdminCommand", () => {
 		});
 	});
 
+	it("should ignore malformed moderation JSON when the set-json payload is invalid", () => {
+		expect(
+			parseTelegramModerationAdminCommand(
+				'/eli5 moderation set-json {"moderation":',
+			),
+		).toEqual({
+			type: "ignore",
+		});
+	});
+
 	it("ignores unrelated text", () => {
 		expect(parseTelegramModerationAdminCommand("hello")).toEqual({
 			type: "ignore",
@@ -162,5 +172,25 @@ describe("isTelegramModerationAdmin", () => {
 			),
 		).resolves.toBe(true);
 		expect(getChatMember).toHaveBeenCalledWith("-100123", "777");
+	});
+
+	it("should deny admin access when Telegram getChatMember throws", async () => {
+		const runtime: any = {
+			getService: () => ({
+				bot: {
+					telegram: {
+						getChatMember: vi.fn().mockRejectedValue(new Error("lookup failed")),
+					},
+				},
+			}),
+		};
+
+		await expect(
+			isTelegramModerationAdmin(
+				runtime,
+				{ channelId: "-100123", userId: "777" } as any,
+				DEFAULT_COMMUNITY_MODERATION_SETTINGS,
+			),
+		).resolves.toBe(false);
 	});
 });
