@@ -85,40 +85,30 @@ For multi-step tasks, state a brief plan and check after each step.
 
 <!-- SPECTRA:START v1.0.2 -->
 
-# Spectra (primary planning system)
+# Spectra Instructions
 
-This project uses **Spectra** for Spec-Driven Development. Specs live in `openspec/specs/`, change proposals in `openspec/changes/`. Spectra is the **default** plan format; only fall back to `docs/exec-plans/` for work that does not fit a single spec change (see `PLANS.md`).
+This project uses Spectra for Spec-Driven Development(SDD). Specs live in `openspec/specs/`, change proposals in `openspec/changes/`.
 
-## Use `/spectra-*` skills when
+## Use `/spectra-*` skills when:
 
-- Discussion needs structure before coding → `/spectra-discuss`
-- Plan, propose, or design a change → `/spectra-propose`
+- A discussion needs structure before coding → `/spectra-discuss`
+- User wants to plan, propose, or design a change → `/spectra-propose`
 - Tasks are ready to implement → `/spectra-apply`
-- In-progress change to continue → `/spectra-ingest`
-- Question about specs or behavior → `/spectra-ask`
-- Implementation done → `/spectra-archive`
-- Commit only files for one change → `/spectra-commit`
-- Debug with the four-phase workflow → `/spectra-debug`
-- Security review of pending changes → `/spectra-audit`
+- There's an in-progress change to continue → `/spectra-ingest`
+- User asks about specs or how something works → `/spectra-ask`
+- Implementation is done → `/spectra-archive`
+- Commit only files related to a specific change → `/spectra-commit`
 
 ## Workflow
 
-`discuss?` → `propose` → `apply` ⇄ `ingest` → `archive`
+discuss? → propose → apply ⇄ ingest → archive
 
-- `discuss` is optional — skip when requirements are clear.
-- Requirements change mid-work? Plan mode → `ingest` → resume `apply`.
-- **`tasks.md` checkboxes are the single source of truth for progress** while inside `/spectra-apply`. Do not use external todo trackers in that mode.
+- `discuss` is optional — skip if requirements are clear
+- Requirements change mid-work? Plan mode → `ingest` → resume `apply`
 
-## TDD inside Spectra
+## Parked Changes
 
-Each Spectra task that touches behavior expands into Red → Green → Refactor *inside that one checkbox* (see `TDD_RULES.md` §9). The proposal's `## Impact` lists production files; the matching `tests/*.test.ts` files are implied and must be written first.
-
-- Before ticking a task: run `bun run test:<agent>`.
-- Before `/spectra-archive`: run the full pre-merge suite (below).
-
-## Parked changes
-
-Parked（暫存）changes are temporarily moved out of `openspec/changes/`. Find them with `spectra list --parked`; restore with `spectra unpark <name>`. `/spectra-apply` and `/spectra-ingest` handle parked changes automatically.
+Changes can be parked — temporarily moved out of `openspec/changes/`. Parked changes won't appear in `spectra list` but can be found with `spectra list --parked`. To restore: `spectra unpark <name>`. The `/spectra-apply` and `/spectra-ingest` skills handle parked changes automatically.
 
 <!-- SPECTRA:END -->
 
