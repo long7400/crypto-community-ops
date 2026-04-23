@@ -1,6 +1,6 @@
 # Task Brief Template
 
-Copy this file into `rules/docs/tasks/YYYY-MM-DD-short-task-name.md` and replace the placeholders.
+Copy this file into `docs/tasks/YYYY-MM-DD-short-task-name.md` and replace the placeholders.
 
 ## Title
 
@@ -50,9 +50,6 @@ If yes, specify why.
 
 - `AGENTS.md`
 - `ARCHITECTURE.md`
-- `PRODUCT_SENSE.md`
-- `QUALITY_GATES.md`
-- `SECURITY.md`
 - `[path]`
 - `[path]`
 

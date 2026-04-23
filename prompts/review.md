@@ -12,7 +12,4 @@ Prioritize:
 
 Use the task brief at `[path]` and the execution plan at `[path or n/a]` as the intended contract.
 
-Check the actual validation commands from `QUALITY_GATES.md`, especially targeted
-Vitest suites for the affected agent.
-
 Do not summarize the diff first. Lead with findings ordered by severity.

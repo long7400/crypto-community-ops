@@ -9,7 +9,6 @@ import type {
 import dotenv from "dotenv";
 import { v4 as uuidv4 } from "uuid";
 import { initCharacter } from "../init";
-import twitterPostAction from "./actions/post";
 
 dotenv.config({ path: "../../.env" });
 
@@ -39,7 +38,6 @@ const character: Character = {
       ? ["@elizaos/plugin-local-ai"]
       : []),
     "@elizaos/plugin-discord",
-    "@elizaos/plugin-twitter",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-video-understanding",
     "@elizaos/plugin-bootstrap",
@@ -50,7 +48,6 @@ const character: Character = {
         process.env.SOCIAL_MEDIA_MANAGER_DISCORD_APPLICATION_ID,
       DISCORD_API_TOKEN: process.env.SOCIAL_MEDIA_MANAGER_DISCORD_API_TOKEN,
     },
-    TWITTER_ENABLE_POST_GENERATION: false,
     avatar: "https://elizaos.github.io/eliza-avatars/Laura/portrait.jpg",
   },
   system:
@@ -219,10 +216,6 @@ const character: Character = {
  * @property {string} settings.ORG_NAME - Organization Name setting.
  * @property {string} settings.ORG_DESCRIPTION - Organization Description setting.
  * @property {string} settings.ORG_STYLE - Brand Style setting.
- * @property {string} settings.TWITTER_USERNAME - Twitter Username setting.
- * @property {string} settings.TWITTER_EMAIL - Twitter Email setting.
- * @property {string} settings.TWITTER_PASSWORD - Twitter Password setting.
- * @property {string} settings.TWITTER_2FA_SECRET - Twitter 2FA Secret setting.
  * @property {string} settings.ANNOUNCEMENTS_CHANNELS - Announcements Channels setting.
  */
 export const config: OnboardingConfig = {
@@ -259,52 +252,6 @@ export const config: OnboardingConfig = {
       required: true,
       dependsOn: [],
     },
-    // Basic Auth Settings
-    TWITTER_USERNAME: {
-      name: "Twitter Username",
-      description: "The Twitter username to use for posting",
-      required: true,
-      dependsOn: [],
-      public: true,
-      secret: false,
-      usageDescription: "The Twitter username to use for posting.",
-      validation: (value) =>
-        typeof value === "string" && value.length > 0 && value.length <= 15,
-    },
-    TWITTER_EMAIL: {
-      name: "Twitter Email",
-      description: "Email associated with the Twitter account to post from",
-      required: true,
-      public: false,
-      secret: false,
-      dependsOn: [],
-      usageDescription:
-        "The email associated with the Twitter account to post from.",
-      validation: (value) =>
-        typeof value === "string" && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value),
-    },
-    TWITTER_PASSWORD: {
-      name: "Twitter Password",
-      description:
-        "The password associated with the Twitter account to post from.",
-      public: false,
-      secret: true,
-      usageDescription:
-        "The password associated with the Twitter account to post from.",
-      required: true,
-      dependsOn: [],
-    },
-    TWITTER_2FA_SECRET: {
-      name: "Twitter 2FA Secret",
-      description:
-        "The 2FA secret associated with the Twitter account to post from.",
-      public: false,
-      secret: true,
-      usageDescription:
-        "The 2FA secret associated with the Twitter account to post from.",
-      required: false,
-      dependsOn: [],
-    },
     // array of announcements channels on different platforms, specifically telegram, discord, slack
     ANNOUNCEMENTS_CHANNELS: {
       name: "Announcements Channels",
@@ -326,7 +273,7 @@ export const config: OnboardingConfig = {
 export const socialMediaManager: ProjectAgent = {
   character,
   init: async (runtime: IAgentRuntime) =>
-    await initCharacter({ runtime, config, actions: [twitterPostAction] }),
+    await initCharacter({ runtime, config }),
 };
 
 export default socialMediaManager;

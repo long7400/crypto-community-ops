@@ -1,144 +1,98 @@
-# The Org - Multi-Agent System
+# Codex Human-in-the-Loop Template
 
-The Org is an elizaOS TypeScript project that packages specialized agents for
-community operations, developer relations, project coordination, social media,
-and cross-community liaison work.
+This repository template is for teams that want agent-driven development without turning the whole software process into unattended automation.
 
-## Agents
+The operating model is simple:
 
-- Eli5 (`src/communityManager/`): community onboarding, greetings, moderation, and Telegram/Discord flows.
-- Eddy (`src/devRel/`): developer support, documentation help, and code examples.
-- Ruby (`src/liaison/`): cross-community awareness, liaison work, and reporting.
-- Jimmy (`src/projectManager/`): project management, check-ins, reports, and team coordination.
-- Laura (`src/socialMediaManager/`): social content drafting, approval support, and publishing workflows.
+- Humans steer intent, priorities, risk, and approvals.
+- Codex executes research, implementation, testing, and documentation work.
+- The repository is the source of truth.
+- Rules are encoded in docs and checks, not held in someone's head.
 
-## Agent Working Rules
+This template is shaped by a few principles:
 
-Coding agents should start with these root docs:
+1. Keep `AGENTS.md` short and use it as a map, not an encyclopedia.
+2. Put durable project knowledge in versioned repository docs.
+3. Use execution plans for work that is long, cross-cutting, or risky.
+4. Prefer explicit architecture boundaries over vague style guidance.
+5. Increase autonomy only after checks, docs, and recovery paths exist.
+6. Keep a human approval gate for decisions with product, security, data, or operational risk.
 
-1. `AGENTS.md`
-2. `ARCHITECTURE.md`
-3. `PRODUCT_SENSE.md`
-4. `QUALITY_GATES.md`
-5. `SECURITY.md`
-6. `PLANS.md` for long-running or risky work
+## Who this template is for
 
-Reusable workflow docs, templates, and prompt starters live under `rules/docs/`
-and `rules/prompts/`.
+Use this if you want to work like:
 
-## Prerequisites
+- "I give Codex a task brief, it explores, proposes a plan, then implements after I approve."
+- "Codex can do most of the coding and review prep, but I still want to decide what ships."
+- "I want strong repository guidance and repeatable working loops, not a bot that auto-pulls issues and auto-merges code."
 
-- Bun
-- Node.js
-- A `.env` file copied from `.env.example`
-- Optional PostgreSQL/Neon connection for local DB-backed runtime use
+Do not use this template as-is if your goal is fully autonomous background delivery. It is intentionally opinionated toward `human steers, agent executes`.
 
-## Setup
+## Repository layout
 
-```bash
-bun install
-cp .env.example .env
-```
+Top-level files:
 
-Fill in only the platform and model secrets needed for the agents you plan to
-run. `src/index.ts` filters agents based on configured platform secrets.
+- `AGENTS.md`: short instructions for coding agents.
+- `PLANS.md`: rules for writing living execution plans.
+- `ARCHITECTURE.md`: codemap and architectural invariants.
+- `PRODUCT_SENSE.md`: product and UX principles.
+- `QUALITY_GATES.md`: merge and validation expectations.
+- `TDD_RULES.md`: Test-Driven Development rules and antipatterns.
+- `SECURITY.md`: red flags and approval gates.
 
-## Running
+Supporting docs:
 
-Start the elizaOS dev runtime:
+- `docs/INDEX.md`: documentation map.
+- `docs/workflows/`: human-agent collaboration loops.
+- `docs/templates/`: reusable templates for briefs, plans, reviews, and decisions.
+- `docs/tasks/`: active task briefs and lightweight delivery notes.
+- `docs/exec-plans/`: long-running implementation plans.
+- `docs/decisions/`: architecture and product decisions.
 
-```bash
-bun run dev
-```
+Optional prompt helpers:
 
-Start the production-style runtime:
+- `prompts/`: copy-paste prompts for starting tasks, reviews, and follow-up passes with Codex.
 
-```bash
-bun run start
-```
+## Daily workflow
 
-Run specific agents by passing flags recognized by `src/index.ts`:
+1. Create a task brief from `docs/templates/TASK_BRIEF_TEMPLATE.md`.
+2. Ask Codex to read the brief, inspect the codebase, and either:
+   - implement directly for small local work, or
+   - write an execution plan for larger work.
+3. Review the plan if one is needed.
+4. Give explicit approval to implement.
+5. Have Codex run relevant checks and update docs.
+6. Review the result using `docs/templates/PR_REVIEW_TEMPLATE.md`.
+7. Capture any durable rule or design decision back into repo docs.
 
-```bash
-bun src/index.ts --communityManager
-bun src/index.ts --projectManager
-```
+## Approval model
 
-Available flags:
+By default, Codex should pause for human approval before:
 
-- `--communityManager`
-- `--devRel`
-- `--liaison`
-- `--projectManager`
-- `--socialMediaManager`
+- irreversible schema or data migrations
+- authentication, authorization, or security-sensitive changes
+- production infra or deployment changes
+- public API contract changes
+- deletion of significant code paths
+- changes that contradict existing product or architecture docs
 
-## Commands
+Small local fixes, test additions, and low-risk refactors can proceed without a separate planning round once the task brief is clear.
 
-- Build: `bun run build`
-- Format check: `bun run format:check`
-- Apply formatting: `bun run format`
-- Typecheck: `bunx tsc -p tsconfig.json --noEmit`
-- Main project tests: `bun run test:the-org`
-- elizaOS test harness: `bun run test`
-- Community manager tests: `bun run test:communityManager`
-- DevRel tests: `bun run test:devRel`
-- Liaison tests: `bun run test:liaison`
-- Project manager tests: `bun run test:projectManager`
-- Social media manager tests: `bun run test:socialMediaManager`
+## How to bootstrap this template
 
-For a reasonable pre-merge pass:
+Before first real use, replace bracketed placeholders such as `[PROJECT_NAME]` and `[FILL IN]` in these files.
 
-```bash
-bun run format:check && bunx tsc -p tsconfig.json --noEmit && bun run build && bun run test:the-org
-```
+Recommended first edits:
 
-## Project Structure
+1. Fill in `ARCHITECTURE.md` with the real module map.
+2. Fill in `AGENTS.md` with actual setup, build, and test commands.
+3. Adjust `QUALITY_GATES.md` to match your toolchain.
+4. Write your first real task brief in `docs/tasks/`.
 
-```text
-src/
-  index.ts                         Project entrypoint and agent selection
-  init.ts                          Shared runtime/onboarding event wiring
-  communityManager/                Eli5 community manager
-  devRel/                          Eddy developer support
-  liaison/                         Ruby liaison
-  projectManager/                  Jimmy project manager and team coordinator plugin
-  socialMediaManager/              Laura social media manager
-  loadTest/                        Load testing service and scale tests
-  utils/                           Small shared helpers
-tests/
-  *.test.ts                        Vitest agent suites
-  test_suites/                     Shared test harnesses
-rules/
-  docs/                            Workflow docs, task briefs, plans, decisions, templates
-  prompts/                         Prompt starters for kickoff/review/follow-up
-```
+## Suggested autonomy levels
 
-## Configuration Notes
+- Level 1: Codex explores, drafts plans, and proposes changes. Human approves before edits.
+- Level 2: Codex edits and validates low-risk work. Human approves risky work.
+- Level 3: Codex self-reviews and prepares merge-ready changes. Human reviews exceptions and sampled work.
 
-- Model providers are enabled from env vars such as `OPENAI_API_KEY`,
-  `ANTHROPIC_API_KEY`, and `OPENROUTER_API_KEY`.
-- Discord and Telegram platform secrets are agent-specific in `.env.example`.
-- Eli5 Telegram uses `COMMUNITY_MANAGER_TELEGRAM_BOT_TOKEN`; keep it dedicated
-  to avoid Telegram `409 Conflict` issues.
-- Eli5 community moderation settings are stored per world under
-  `COMMUNITY_MODERATION`. Telegram-specific options live under
-  `platforms.telegram`; future Discord options must live under
-  `platforms.discord`. Defaults run in dry-run mode until explicitly changed.
-  Use Telegram admin commands such as `/eli5 moderation settings` and
-  `/eli5 dry-run off` to inspect or update the first settings.
-- Do not commit `.env`, generated secrets, or logs containing tokens.
-
-## Testing Notes
-
-- Add or update tests for changed behavior.
-- For Eli5 Telegram onboarding, prefer `tests/eli5Telegram.test.ts` and
-  `tests/test_suites/TelegramTestSuite.ts`.
-- For project manager team coordination, prefer focused tests near
-  `src/projectManager/plugins/team-coordinator/` plus the project manager suite
-  when behavior crosses the agent boundary.
-- `bun run lint` currently writes formatting; use `bun run format:check` when
-  you need a non-mutating check.
-
-## License
-
-This project is currently unlicensed.
+Start at Level 1 or 2. Move up only when your repo docs, checks, and recovery paths are solid.

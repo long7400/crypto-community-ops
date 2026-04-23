@@ -1,6 +1,6 @@
 # Execution Plan Template
 
-Copy this file into `rules/docs/exec-plans/active/YYYY-MM-DD-short-task-name.md`.
+Copy this file into `docs/exec-plans/active/YYYY-MM-DD-short-task-name.md`.
 
 ## Title
 
@@ -45,9 +45,6 @@ Excluded:
 ## Context and Orientation
 
 Describe the relevant parts of the codebase and how they fit together.
-For this repo, call out affected agents or shared boundaries such as
-`src/init.ts`, `src/index.ts`, Telegram/Discord runtime events, or
-`src/projectManager/plugins/team-coordinator/` when relevant.
 
 ## Plan of Work
 
@@ -56,8 +53,6 @@ Describe the sequence of edits in prose. Name the files and modules precisely.
 ## Validation and Acceptance
 
 List exact commands and the outputs or behaviors that prove success.
-Prefer commands from `QUALITY_GATES.md`, starting with targeted tests before
-broader checks.
 
 ## Risks and Rollback
 

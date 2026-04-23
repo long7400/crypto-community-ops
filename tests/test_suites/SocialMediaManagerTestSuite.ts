@@ -73,7 +73,7 @@ export class SocialMediaManagerTestSuite implements TestSuite {
           runtime,
           worldId,
           roomId,
-          'Please create a post about our new product launch for Twitter and Discord'
+          'Please create a post about our new product launch for Discord and Telegram'
         );
 
         // Wait for agent to process request and generate posts

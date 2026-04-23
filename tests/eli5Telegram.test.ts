@@ -260,7 +260,7 @@ describe("Eli5 Telegram E2E", () => {
       runtime,
       entityId: "new-member-entity",
       worldId: "world-1",
-      newMember: {
+      telegramUser: {
         first_name: "Ada",
         last_name: "Lovelace",
         username: "ada",
@@ -317,7 +317,7 @@ describe("Eli5 Telegram E2E", () => {
       runtime,
       entityId: "new-member-entity",
       worldId: "world-1",
-      newMember: {
+      telegramUser: {
         first_name: "Ada",
       },
       ctx,
@@ -354,11 +354,42 @@ describe("Eli5 Telegram E2E", () => {
       runtime,
       entityId: "new-member-entity",
       worldId: "world-1",
-      newMember: {
+      telegramUser: {
         first_name: "Ada",
       },
       ctx,
     });
+
+    expect(ctx.reply).not.toHaveBeenCalled();
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+  });
+
+  it("should skip Telegram greeting when the join event has no new member payload", async () => {
+    const { runtime, eventHandlers } = createTelegramRuntimeMock({
+      adapter: {
+        getWorld: vi.fn().mockResolvedValue(
+          createTelegramWorld({
+            SHOULD_GREET_NEW_PERSONS: { value: true },
+          }),
+        ),
+      },
+    });
+    const ctx = {
+      chat: { id: -100781 },
+      reply: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await CommunityManagerService.start(runtime);
+    const handler = eventHandlers.get("TELEGRAM_ENTITY_JOINED");
+
+    await expect(
+      handler?.({
+        runtime,
+        entityId: "new-member-entity",
+        worldId: "world-1",
+        ctx,
+      }),
+    ).resolves.toBeUndefined();
 
     expect(ctx.reply).not.toHaveBeenCalled();
     expect(runtime.createMemory).not.toHaveBeenCalled();
@@ -400,7 +431,7 @@ describe("Eli5 Telegram E2E", () => {
       runtime,
       entityId: "new-member-entity",
       worldId: "world-1",
-      newMember: {
+      telegramUser: {
         first_name: "Ada",
         last_name: "Lovelace",
         username: "ada",

@@ -199,7 +199,13 @@ export class CommunityManagerService extends Service {
   }
 
   async onTelegramUserJoined(params) {
-    const { runtime, entityId, worldId, newMember, ctx } = params;
+    const { runtime, entityId, worldId, telegramUser } = params;
+    if (typeof telegramUser !== "object" || telegramUser === null) {
+      logger.warn(
+        "Telegram join event missing telegramUser; skipping greeting",
+      );
+      return;
+    }
 
     const world = await runtime.adapter.getWorld(worldId);
     if (!world) {
@@ -233,10 +239,10 @@ export class CommunityManagerService extends Service {
     }
 
     const userName =
-      newMember.first_name +
-        (newMember.last_name ? ` ${newMember.last_name}` : "") ||
-      newMember.username ||
-      "friend";
+      (telegramUser.first_name
+        ? telegramUser.first_name +
+          (telegramUser.last_name ? ` ${telegramUser.last_name}` : "")
+        : telegramUser.username) || "friend";
 
     const configuredTemplate =
       telegramModerationSettings?.platforms.telegram.greeting.template?.trim();
@@ -246,7 +252,7 @@ export class CommunityManagerService extends Service {
           .replace("{displayName}", userName)
           .replace(
             "{username}",
-            newMember.username ? `@${newMember.username}` : userName,
+            telegramUser.username ? `@${telegramUser.username}` : userName,
           )
       : await this.getGreetingMessage(
           runtime,
@@ -258,20 +264,45 @@ export class CommunityManagerService extends Service {
       greetingMessage ||
       `Welcome ${userName}! I'm ${runtime.character.name}, your community manager. Feel free to say hi!`;
 
-    try {
-      await ctx.reply(welcomeText);
-    } catch (err) {
-      logger.error(`Failed to send greeting in Telegram: ${err}`);
+    // world.serverId is deprecated; world.messageServerId may also be absent after DB round-trip
+    // because the Telegram plugin passes `serverId` (not `messageServerId`) to ensureWorldExists,
+    // which only persists `messageServerId`. Resolve chatId from the world's rooms as a fallback.
+    let chatId = world.serverId ?? world.messageServerId;
+    if (!chatId) {
+      const worldRooms = await runtime.getRooms(worldId);
+      chatId = (worldRooms ?? []).find(
+        (r) => r.source === "telegram",
+      )?.channelId;
     }
 
-    const roomId = createUniqueUuid(runtime, ctx.chat.id.toString());
+    if (!chatId) {
+      logger.warn(
+        "Cannot send greeting: chatId could not be resolved from world or rooms",
+      );
+      return;
+    }
+
+    const telegram = runtime.getService("telegram") as any;
+    if (telegram?.messageManager?.sendMessage) {
+      try {
+        await telegram.messageManager.sendMessage(chatId, {
+          text: welcomeText,
+        });
+      } catch (err) {
+        logger.error(`Failed to send greeting in Telegram: ${err}`);
+      }
+    } else {
+      logger.warn("Telegram service unavailable; greeting message skipped");
+    }
+
+    const roomId = createUniqueUuid(runtime, chatId);
 
     await runtime.ensureRoomExists({
       id: roomId,
       source: "telegram",
       type: ChannelType.GROUP,
-      channelId: ctx.chat.id.toString(),
-      serverId: ctx.chat.id.toString(),
+      channelId: chatId,
+      serverId: chatId,
       worldId,
     });
 
