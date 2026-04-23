@@ -208,9 +208,12 @@ export class CommunityManagerService extends Service {
     }
     const rawCommunityModerationSettings =
       world.metadata?.settings?.["COMMUNITY_MODERATION"]?.value;
-    const telegramModerationSettings = rawCommunityModerationSettings
-      ? mergeCommunityModerationSettings(rawCommunityModerationSettings)
-      : undefined;
+    const telegramModerationSettings =
+      typeof rawCommunityModerationSettings === "object" &&
+      rawCommunityModerationSettings !== null &&
+      !Array.isArray(rawCommunityModerationSettings)
+        ? mergeCommunityModerationSettings(rawCommunityModerationSettings as any)
+        : undefined;
     const legacyShouldGreet =
       world.metadata?.settings?.["SHOULD_GREET_NEW_PERSONS"]?.value;
     const shouldGreetUser =
