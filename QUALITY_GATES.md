@@ -16,19 +16,25 @@ Every non-trivial change should satisfy all relevant items below:
 
 ## Required commands
 
+Package manager is **bun**. All commands run from repo root.
+
 - Format check: `bun run format:check`
-- Format write: `bun run format`
-- Typecheck: `bunx tsc -p tsconfig.json --noEmit`
-- Build: `bun run build`
-- All project tests: `bun run test:the-org`
-- elizaOS test harness: `bun run test`
-- Targeted tests:
-  - Community manager: `bun run test:communityManager`
-  - DevRel: `bun run test:devRel`
-  - Liaison: `bun run test:liaison`
-  - Project manager: `bun run test:projectManager`
-  - Social media manager: `bun run test:socialMediaManager`
-- Reasonable pre-merge suite: `bun run format:check && bunx tsc -p tsconfig.json --noEmit && bun run build && bun run test:the-org`
+- Format (write): `bun run format`
+- Lint (ESLint): `bunx eslint src`
+- Typecheck: `bunx tsc --noEmit`
+- Unit tests (all agents): `bun run test:the-org`
+- Unit tests (single agent): `bun run test:<agentName>` (e.g. `test:communityManager`, `test:devRel`, `test:liaison`, `test:projectManager`, `test:socialMediaManager`)
+- Single test file: `bunx vitest tests/<file>.test.ts`
+- elizaOS integration tests: `bun run test` (alias for `elizaos test`)
+- Build: `bun run build` (tsup)
+
+Full pre-merge suite (must all pass):
+
+```bash
+bun run format:check && bunx tsc --noEmit && bun run test:the-org && bun run build
+```
+
+For changes that touch platform adapters (Discord/Telegram) or the elizaOS runtime, also run `bun run test` to exercise the integration layer.
 
 ## Testing expectations
 
@@ -38,8 +44,6 @@ Suggested default expectations (see `TDD_RULES.md` for detailed requirements):
 - Update tests for changed behavior.
 - Do not rely only on manual verification when automated checks are practical.
 - For high-risk fixes, add a test that fails before and passes after.
-- For Telegram/Eli5 behavior, update or add coverage in `tests/eli5Telegram.test.ts` and `tests/test_suites/TelegramTestSuite.ts`.
-- For team coordinator behavior, prefer focused tests near `src/projectManager/plugins/team-coordinator/` plus the project manager suite when behavior crosses the agent boundary.
 
 ## Review expectations
 
@@ -61,8 +65,3 @@ Do not self-approve changes that affect:
 - operational policies
 
 Those require a human decision even if the code is otherwise ready.
-
-## Current caveats
-
-- `bun run lint` currently writes formatting via Prettier; use `bun run format:check` for a non-mutating check.
-- The root rule docs are project-specific, while reusable templates/workflows still live under `rules/docs/` and `rules/prompts/`.

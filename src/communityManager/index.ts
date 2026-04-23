@@ -36,7 +36,6 @@ export const character: Character = {
     ...(process.env.COMMUNITY_MANAGER_TELEGRAM_BOT_TOKEN
       ? ["@elizaos/plugin-telegram"]
       : []),
-    "@elizaos/plugin-twitter",
     "@elizaos/plugin-pdf",
     "@elizaos/plugin-video-understanding",
     "@elizaos/plugin-bootstrap",
@@ -259,7 +258,7 @@ export const character: Character = {
       {
         name: "{{name1}}",
         content: {
-          text: "Can someone help me set up my Twitter bot?",
+          text: "Can someone help me set up my trading bot?",
         },
       },
       {

@@ -2,13 +2,13 @@
 
 ## 1. Overview
 
-Laura is an AI-powered marketing agent designed to handle social media communications across Discord, Twitter, and Telegram platforms. She specializes in crafting clean, impactful messaging that prioritizes substance over hype. Laura works with teams to create and distribute approved content, handling everything from announcement posts to image sharing across multiple platforms.
+Laura is an AI-powered marketing agent designed to handle social media communications across Discord and Telegram platforms. She specializes in crafting clean, impactful messaging that prioritizes substance over hype. Laura works with teams to create and distribute approved content, handling everything from announcement posts to image sharing across multiple platforms.
 
 ## 2. Core Functionality
 
 ### Onboarding from existing assets
 
-- Give twitter account and she absorbs your brand voice, style, etc
+- Provide existing brand assets so she can absorb your voice, style, and positioning.
 - website, YouTube, PDFs to knowledge
 
 ### Content Creation & Approval
@@ -22,7 +22,6 @@ Laura is an AI-powered marketing agent designed to handle social media communica
 ### Multi-Platform Publishing
 
 - Post approved content to Discord channels
-- Share updates on Twitter (including DM-based posting)
 - Distribute announcements via Telegram
 - Support cross-platform content adaptation
 - Handle image attachments across platforms

@@ -1,8 +1,6 @@
 # Human in the Loop Workflow
 
-This repository does not assume full autonomous delivery. The default mode is:
-human steers product and risk, Codex performs focused implementation and
-validation.
+This repository does not assume full autonomous delivery.
 
 The default loop is:
 
@@ -35,15 +33,15 @@ Codex owns:
 
 For small work:
 
-1. Write a task brief in `rules/docs/tasks/` when scope needs to persist.
+1. Write a task brief in `docs/tasks/`.
 2. Ask Codex to read the brief and inspect the relevant code.
 3. If the task is local and low risk, implement directly.
 4. Run checks, update docs, and review.
 
 For larger work:
 
-1. Write a task brief in `rules/docs/tasks/`.
-2. Ask Codex to draft an execution plan in `rules/docs/exec-plans/active/`.
+1. Write a task brief in `docs/tasks/`.
+2. Ask Codex to draft an execution plan in `docs/exec-plans/active/`.
 3. Review the plan.
 4. Approve implementation.
 5. Have Codex maintain the plan as work proceeds.
@@ -57,8 +55,6 @@ Stop for human approval when the work affects:
 - security or permission boundaries
 - deployment, CI, or production operations
 - architecture rules that may need to change
-- Telegram/Discord bot token routing
-- moderation, timeout, social publishing, or public-channel reporting behavior
 
 ## What "good collaboration" looks like
 
@@ -66,7 +62,6 @@ Stop for human approval when the work affects:
 - The human does not need to restate stable rules every session.
 - Durable rules are written into repo docs.
 - The result is understandable from repository state, not hidden chat history.
-- Checks are reported by exact command, not by assumption.
 
 ## What this workflow avoids
 

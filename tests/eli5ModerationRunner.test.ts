@@ -3,9 +3,36 @@ import { normalizeTelegramMessagePayload } from "../src/communityManager/plugins
 import { TelegramModerationAdapter } from "../src/communityManager/plugins/communityManager/moderation/telegramAdapter";
 import { ModerationRunner } from "../src/communityManager/plugins/communityManager/moderation/moderationRunner";
 import { telegramModerationEvaluator } from "../src/communityManager/plugins/communityManager/moderation/telegramModerationEvaluator";
+import { callTelegramApi } from "../src/communityManager/plugins/communityManager/moderation/telegramErrors";
+
+describe("callTelegramApi", () => {
+	it("should retry once when Telegram returns 429", async () => {
+		const operation = vi
+			.fn()
+			.mockRejectedValueOnce({
+				response: { error_code: 429, parameters: { retry_after: 0 } },
+			})
+			.mockResolvedValueOnce("ok");
+
+		const resultPromise = callTelegramApi(operation, "retry test");
+
+		await expect(resultPromise).resolves.toBe("ok");
+		expect(operation).toHaveBeenCalledTimes(2);
+	});
+
+	it("should rethrow immediately when Telegram returns 400", async () => {
+		const error = {
+			response: { error_code: 400, description: "bad request" },
+		};
+		const operation = vi.fn().mockRejectedValue(error);
+
+		await expect(callTelegramApi(operation, "bad request")).rejects.toBe(error);
+		expect(operation).toHaveBeenCalledTimes(1);
+	});
+});
 
 describe("normalizeTelegramMessagePayload", () => {
-	it("normalizes raw Telegram message payloads", () => {
+	it("should normalize raw Telegram message payloads when Telegram provides chat and sender data", () => {
 		const message = normalizeTelegramMessagePayload({
 			worldId: "world-1",
 			roomId: "room-1",
@@ -43,7 +70,7 @@ describe("normalizeTelegramMessagePayload", () => {
 		);
 	});
 
-	it("normalizes Telegram memories created by plugin-telegram 1.6.4", () => {
+	it("should normalize Telegram memories created by plugin-telegram 1.6.4 when sender and room context are hydrated", () => {
 		const message = normalizeTelegramMessagePayload({
 			message: {
 				id: "memory-1",
@@ -89,7 +116,7 @@ describe("normalizeTelegramMessagePayload", () => {
 		);
 	});
 
-	it("returns null for bot messages and non-text messages", () => {
+	it("should return null when Telegram messages come from bots or have no text", () => {
 		expect(
 			normalizeTelegramMessagePayload({
 				worldId: "world-1",
@@ -106,7 +133,7 @@ describe("normalizeTelegramMessagePayload", () => {
 });
 
 describe("TelegramModerationAdapter", () => {
-	it("sends warning messages through the Telegram message manager", async () => {
+	it("should send warning messages through the Telegram message manager when warn is called", async () => {
 		const sendMessage = vi.fn().mockResolvedValue([]);
 		const runtime: any = {
 			getService: () => ({ messageManager: { sendMessage } }),
@@ -120,7 +147,7 @@ describe("TelegramModerationAdapter", () => {
 		});
 	});
 
-	it("restricts a user when muting", async () => {
+	it("should restrict a user when mute is requested with valid bot permissions", async () => {
 		const restrictChatMember = vi.fn().mockResolvedValue(true);
 		const getChatMember = vi.fn().mockResolvedValue({
 			status: "administrator",
@@ -149,7 +176,7 @@ describe("TelegramModerationAdapter", () => {
 		expect(getChatMember).toHaveBeenCalledWith("-100123", 999);
 	});
 
-	it("blocks mute when the Telegram bot is not an admin with restrict permission", async () => {
+	it("should reject mute when the Telegram bot cannot restrict members", async () => {
 		const runtime: any = {
 			getService: () => ({
 				bot: {
@@ -170,7 +197,7 @@ describe("TelegramModerationAdapter", () => {
 });
 
 describe("telegramModerationEvaluator", () => {
-	it("runs for plugin-created Telegram memories", async () => {
+	it("should run for plugin-created Telegram memories when evaluator validation succeeds", async () => {
 		const message: any = {
 			content: { source: "telegram", text: "hello" },
 			metadata: { chatId: "-100123" },
@@ -184,7 +211,7 @@ describe("telegramModerationEvaluator", () => {
 });
 
 describe("ModerationRunner", () => {
-	it("records dry-run audit without warning, mute, or violation increment", async () => {
+	it("should record a dry-run audit when spam is detected", async () => {
 		const createMemory = vi.fn().mockResolvedValue(undefined);
 		const sendMessage = vi.fn().mockResolvedValue([]);
 		const restrictChatMember = vi.fn();
@@ -258,7 +285,7 @@ describe("ModerationRunner", () => {
 		);
 	});
 
-	it("does not run moderation for chats outside TELEGRAM_ALLOWED_CHATS", async () => {
+	it("should skip moderation when allowed chats excludes the current Telegram chat", async () => {
 		const createMemory = vi.fn();
 		const runtime: any = {
 			agentId: "agent-id",
@@ -292,7 +319,7 @@ describe("ModerationRunner", () => {
 		expect(createMemory).not.toHaveBeenCalled();
 	});
 
-	it("lets only Telegram admins mutate settings", async () => {
+	it("should deny settings mutation when the sender is not a Telegram admin", async () => {
 		const world: any = { id: "world-1", metadata: { settings: {} } };
 		const sendMessage = vi.fn().mockResolvedValue([]);
 		const runtime: any = {
@@ -326,6 +353,135 @@ describe("ModerationRunner", () => {
 		expect(sendMessage).toHaveBeenCalledWith(
 			"-100123",
 			expect.objectContaining({ text: expect.stringContaining("admins") }),
+		);
+	});
+
+	it("should resolve the Telegram sender id from entity metadata when plugin-created admin commands use chat-scoped fromId", async () => {
+		const world: any = { id: "world-1", metadata: { settings: {} } };
+		const sendMessage = vi.fn().mockResolvedValue([]);
+		const getChatMember = vi.fn().mockResolvedValue({
+			status: "administrator",
+		});
+		const runtime: any = {
+			agentId: "agent-id",
+			getWorld: vi.fn().mockResolvedValue(world),
+			updateWorld: vi.fn(async (updated: any) => Object.assign(world, updated)),
+			getEntityById: vi.fn().mockResolvedValue({
+				id: "entity-1",
+				metadata: { telegram: { id: "777" } },
+			}),
+			getService: vi.fn(() => ({
+				messageManager: { sendMessage },
+				bot: {
+					telegram: {
+						getChatMember,
+					},
+				},
+			})),
+		};
+
+		await new ModerationRunner(runtime).handleMemory({
+			id: "memory-1",
+			roomId: "room-1",
+			entityId: "entity-1",
+			worldId: "world-1",
+			content: {
+				source: "telegram",
+				text: "/eli5 dry-run off",
+			},
+			metadata: {
+				fromId: "-100123",
+				sourceId: "42",
+				entityUserName: "ada_dev",
+				entityName: "Ada",
+			},
+			createdAt: 1710000000000,
+		} as any);
+
+		expect(getChatMember).toHaveBeenCalledWith("-100123", "777");
+		expect(world.metadata.settings.COMMUNITY_MODERATION.value.dryRun).toBe(
+			false,
+		);
+		expect(sendMessage).toHaveBeenCalledWith(
+			"-100123",
+			expect.objectContaining({
+				text: expect.stringContaining("Dry-run: off"),
+			}),
+		);
+	});
+
+	it("should record Telegram topic scope when plugin-created memories come from forum rooms", async () => {
+		const createMemory = vi.fn().mockResolvedValue(undefined);
+		const runtime: any = {
+			agentId: "agent-id",
+			getSetting: vi.fn((name: string) =>
+				name === "TELEGRAM_ALLOWED_CHATS" ? '["-100123"]' : undefined,
+			),
+			getWorld: vi.fn().mockResolvedValue({
+				id: "world-1",
+				metadata: { settings: {} },
+			}),
+			getRoom: vi.fn().mockResolvedValue({
+				id: "room-1",
+				channelId: "-100123-456",
+				serverId: "-100123",
+				worldId: "world-1",
+				metadata: {
+					threadId: "456",
+					parentChatId: "-100123",
+				},
+			}),
+			getEntityById: vi.fn().mockResolvedValue({
+				id: "entity-1",
+				metadata: { telegram: { id: "777" } },
+			}),
+			getMemories: vi.fn().mockResolvedValue([]),
+			createMemory,
+			getService: vi.fn(() => ({
+				messageManager: { sendMessage: vi.fn().mockResolvedValue([]) },
+				bot: {
+					botInfo: { id: 999 },
+					telegram: {
+						restrictChatMember: vi.fn(),
+						getChatMember: vi.fn().mockResolvedValue({
+							status: "administrator",
+							can_restrict_members: true,
+						}),
+					},
+				},
+			})),
+			useModel: vi.fn().mockResolvedValue(
+				'{"category":"safe","severity":"low","confidence":1,"reason":"safe","signals":[]}',
+			),
+		};
+
+		await new ModerationRunner(runtime).handleMemory({
+			id: "memory-1",
+			roomId: "room-1",
+			entityId: "entity-1",
+			content: {
+				source: "telegram",
+				text: "buy https://a.example https://b.example https://c.example",
+			},
+			metadata: {
+				fromId: "-100123",
+				sourceId: "42",
+				entityUserName: "ada_dev",
+				entityName: "Ada",
+			},
+			createdAt: 1710000000000,
+		} as any);
+
+		expect(createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.objectContaining({
+					type: "COMMUNITY_MODERATION_AUDIT",
+					channelId: "-100123",
+					threadId: "456",
+					userId: "777",
+				}),
+			}),
+			"messages",
 		);
 	});
 });

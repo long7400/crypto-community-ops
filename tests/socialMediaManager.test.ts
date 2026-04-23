@@ -27,6 +27,12 @@ describe("SocialMediaManagerTestSuite", () => {
 	});
 
 	describe("Core Functionality", () => {
+		it("should not register Twitter runtime plugins when the project has no Twitter surface", () => {
+			expect(socialMediaManager.character.plugins).not.toContain(
+				"@elizaos/plugin-twitter",
+			);
+		});
+
 		it("should complete onboarding process successfully", async () => {
 			const testSuite = new SocialMediaManagerTestSuite();
 			const test = testSuite.tests.find(
@@ -60,7 +66,7 @@ describe("SocialMediaManagerTestSuite", () => {
 				mockRuntime,
 				"world-id",
 				"room-id",
-				"Please create a post about our new product launch for Twitter and Discord",
+				"Please create a post about our new product launch for Discord and Telegram",
 			);
 			expect(mockScenarioService.waitForCompletion).toHaveBeenCalledWith(10000);
 		});

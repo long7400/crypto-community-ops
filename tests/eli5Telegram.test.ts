@@ -234,7 +234,7 @@ describe("Eli5 Telegram E2E", () => {
     );
   });
 
-  it("greets new Telegram members and stores a GREET_NEW_PERSON memory with telegram source", async () => {
+  it("should greet a new Telegram member when legacy settings enable greetings", async () => {
     const { runtime, eventHandlers } = createTelegramRuntimeMock({
       adapter: {
         getWorld: vi.fn().mockResolvedValue(
@@ -260,7 +260,7 @@ describe("Eli5 Telegram E2E", () => {
       runtime,
       entityId: "new-member-entity",
       worldId: "world-1",
-      newMember: {
+      telegramUser: {
         first_name: "Ada",
         last_name: "Lovelace",
         username: "ada",
@@ -294,7 +294,7 @@ describe("Eli5 Telegram E2E", () => {
     );
   });
 
-  it("skips Telegram greeting when SHOULD_GREET_NEW_PERSONS is disabled", async () => {
+  it("should skip greeting when legacy settings disable Telegram greetings", async () => {
     const { runtime, eventHandlers } = createTelegramRuntimeMock({
       adapter: {
         getWorld: vi.fn().mockResolvedValue(
@@ -317,7 +317,7 @@ describe("Eli5 Telegram E2E", () => {
       runtime,
       entityId: "new-member-entity",
       worldId: "world-1",
-      newMember: {
+      telegramUser: {
         first_name: "Ada",
       },
       ctx,
@@ -327,7 +327,75 @@ describe("Eli5 Telegram E2E", () => {
     expect(runtime.createMemory).not.toHaveBeenCalled();
   });
 
-  it("uses COMMUNITY_MODERATION greeting settings for Telegram new member greetings", async () => {
+  it("should fall back to legacy greeting settings when COMMUNITY_MODERATION is malformed", async () => {
+    const { runtime, eventHandlers } = createTelegramRuntimeMock({
+      adapter: {
+        getWorld: vi.fn().mockResolvedValue(
+          createTelegramWorld({
+            COMMUNITY_MODERATION: {
+              value: "broken",
+            },
+            SHOULD_GREET_NEW_PERSONS: { value: false },
+            GREETING_MESSAGE: { value: "Be warm and brief." },
+          }),
+        ),
+      },
+    });
+    const ctx = {
+      chat: { id: -100780 },
+      reply: vi.fn().mockResolvedValue(undefined),
+    };
+
+    runtime.useModel.mockResolvedValue("Welcome Ada!");
+
+    await CommunityManagerService.start(runtime);
+
+    await eventHandlers.get("TELEGRAM_ENTITY_JOINED")?.({
+      runtime,
+      entityId: "new-member-entity",
+      worldId: "world-1",
+      telegramUser: {
+        first_name: "Ada",
+      },
+      ctx,
+    });
+
+    expect(ctx.reply).not.toHaveBeenCalled();
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+  });
+
+  it("should skip Telegram greeting when the join event has no new member payload", async () => {
+    const { runtime, eventHandlers } = createTelegramRuntimeMock({
+      adapter: {
+        getWorld: vi.fn().mockResolvedValue(
+          createTelegramWorld({
+            SHOULD_GREET_NEW_PERSONS: { value: true },
+          }),
+        ),
+      },
+    });
+    const ctx = {
+      chat: { id: -100781 },
+      reply: vi.fn().mockResolvedValue(undefined),
+    };
+
+    await CommunityManagerService.start(runtime);
+    const handler = eventHandlers.get("TELEGRAM_ENTITY_JOINED");
+
+    await expect(
+      handler?.({
+        runtime,
+        entityId: "new-member-entity",
+        worldId: "world-1",
+        ctx,
+      }),
+    ).resolves.toBeUndefined();
+
+    expect(ctx.reply).not.toHaveBeenCalled();
+    expect(runtime.createMemory).not.toHaveBeenCalled();
+  });
+
+  it("should use COMMUNITY_MODERATION greeting settings when moderation greeting is configured", async () => {
     const { runtime, eventHandlers } = createTelegramRuntimeMock({
       adapter: {
         getWorld: vi.fn().mockResolvedValue(
@@ -363,7 +431,7 @@ describe("Eli5 Telegram E2E", () => {
       runtime,
       entityId: "new-member-entity",
       worldId: "world-1",
-      newMember: {
+      telegramUser: {
         first_name: "Ada",
         last_name: "Lovelace",
         username: "ada",

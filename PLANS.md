@@ -2,7 +2,11 @@
 
 This file defines the house style for living execution plans in this repository.
 
-Use an execution plan when the work is long, risky, cross-cutting, or likely to span multiple sessions.
+> **Spectra first.** This project uses Spectra (`openspec/`, `/spectra-*` skills) as the primary planning system. For any change that fits a single spec delta, use `/spectra-propose` → `/spectra-apply` → `/spectra-archive` — the proposal + `tasks.md` *are* the execution plan. See `CLAUDE.md` and `AGENTS.md`.
+>
+> Use the `docs/exec-plans/` format below **only** when the work does not fit a single Spectra change — e.g. a multi-change refactor, a long-running migration that will spawn several Spectra proposals, or operational/infra work that does not touch specs. When in doubt, prefer Spectra.
+
+Use an execution plan when the work is long, risky, cross-cutting, or likely to span multiple sessions **and** does not belong inside a single Spectra change.
 
 The goal is not paperwork. The goal is to make a complex task restartable from repository state alone.
 
@@ -39,7 +43,7 @@ Plans must explicitly pause for human approval before:
 
 ## Required sections
 
-Every plan in `rules/docs/exec-plans/` must contain these sections in this order:
+Every plan in `docs/exec-plans/` must contain these sections in this order:
 
 1. `# Title`
 2. `## Purpose / Big Picture`
@@ -139,8 +143,8 @@ Summarize what shipped, what did not, and what should change in future work.
 
 ## Naming convention
 
-Store active plans in `rules/docs/exec-plans/active/` using a filename like:
+Store active plans in `docs/exec-plans/active/` using a filename like:
 
 `YYYY-MM-DD-short-task-name.md`
 
-Move completed plans to `rules/docs/exec-plans/completed/`.
+Move completed plans to `docs/exec-plans/completed/`.

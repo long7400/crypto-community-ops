@@ -8,7 +8,7 @@ import { parseTelegramModerationAdminCommand } from "../src/communityManager/plu
 import { CommunityModerationSettingsRepository } from "../src/communityManager/plugins/communityManager/moderation/settingsRepository";
 
 describe("Community moderation settings contracts", () => {
-	it("uses dry-run by default and defines the requested mute ladder", () => {
+	it("should use dry run by default when loading the default moderation settings", () => {
 		expect(DEFAULT_COMMUNITY_MODERATION_SETTINGS.version).toBe(1);
 		expect(DEFAULT_COMMUNITY_MODERATION_SETTINGS.dryRun).toBe(true);
 		expect(DEFAULT_COMMUNITY_MODERATION_SETTINGS.moderation.enabled).toBe(true);
@@ -26,7 +26,7 @@ describe("Community moderation settings contracts", () => {
 		]);
 	});
 
-	it("merges partial settings without dropping defaults", () => {
+	it("should merge partial settings without dropping nested defaults", () => {
 		const merged = mergeCommunityModerationSettings({
 			dryRun: false,
 			platforms: {
@@ -50,10 +50,23 @@ describe("Community moderation settings contracts", () => {
 		expect(merged.moderation.categories.fomo.enabled).toBe(false);
 		expect(merged.moderation.categories.fud.enabled).toBe(true);
 	});
+
+	it("should keep the default moderation ladder when a partial settings patch omits ladder", () => {
+		const merged = mergeCommunityModerationSettings({
+			moderation: {
+				resetAfterDays: 14,
+			},
+		});
+
+		expect(merged.moderation.resetAfterDays).toBe(14);
+		expect(merged.moderation.ladder).toEqual(
+			DEFAULT_COMMUNITY_MODERATION_SETTINGS.moderation.ladder,
+		);
+	});
 });
 
 describe("CommunityModerationSettingsRepository", () => {
-	it("loads defaults when a world has no moderation settings", async () => {
+	it("should load default moderation settings when a world has no saved value", async () => {
 		const runtime: any = {
 			getWorld: async () => ({ id: "world-1", metadata: { settings: {} } }),
 		};
@@ -65,7 +78,7 @@ describe("CommunityModerationSettingsRepository", () => {
 		expect(settings.moderation.ladder[1].durationSeconds).toBe(3600);
 	});
 
-	it("saves moderation settings under world metadata without replacing other settings", async () => {
+	it("should save moderation settings without overwriting unrelated world settings", async () => {
 		const world: any = {
 			id: "world-1",
 			metadata: {
@@ -123,6 +136,16 @@ describe("parseTelegramModerationAdminCommand", () => {
 		});
 	});
 
+	it("should ignore malformed moderation JSON when the set-json payload is invalid", () => {
+		expect(
+			parseTelegramModerationAdminCommand(
+				'/eli5 moderation set-json {"moderation":',
+			),
+		).toEqual({
+			type: "ignore",
+		});
+	});
+
 	it("ignores unrelated text", () => {
 		expect(parseTelegramModerationAdminCommand("hello")).toEqual({
 			type: "ignore",
@@ -162,5 +185,25 @@ describe("isTelegramModerationAdmin", () => {
 			),
 		).resolves.toBe(true);
 		expect(getChatMember).toHaveBeenCalledWith("-100123", "777");
+	});
+
+	it("should deny admin access when Telegram getChatMember throws", async () => {
+		const runtime: any = {
+			getService: () => ({
+				bot: {
+					telegram: {
+						getChatMember: vi.fn().mockRejectedValue(new Error("lookup failed")),
+					},
+				},
+			}),
+		};
+
+		await expect(
+			isTelegramModerationAdmin(
+				runtime,
+				{ channelId: "-100123", userId: "777" } as any,
+				DEFAULT_COMMUNITY_MODERATION_SETTINGS,
+			),
+		).resolves.toBe(false);
 	});
 });

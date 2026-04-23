@@ -11,8 +11,6 @@ Use this to review an agent-produced change.
 ## Findings
 
 List findings in severity order.
-Prioritize correctness, regressions, architecture boundary violations, missing
-tests, token/secret handling, and public-channel behavior changes.
 
 ### `[severity]` `[short title]`
 
@@ -33,8 +31,3 @@ Repeat as needed.
 - Approved with follow-up
 - Changes requested
 - Blocked pending decision
-
-## Checks reviewed
-
-- `[command and result]`
-- `[command and result]`

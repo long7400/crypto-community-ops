@@ -2,7 +2,7 @@
 
 Review is a first-class part of the workflow, not a last-minute ritual.
 
-For this repo, use a layered review loop:
+For this template, use a layered review loop:
 
 1. Codex self-review
 2. Optional second Codex pass focused on bugs and regressions
@@ -17,8 +17,6 @@ Before presenting work as complete, Codex should check:
 - were docs updated if the change introduced a durable rule?
 - does the change respect architecture boundaries?
 - what could still be wrong?
-- did the exact checks from `QUALITY_GATES.md` run, and are failures reported honestly?
-- did the change affect `src/init.ts`, runtime events, secrets, or public-channel behavior?
 
 ## Human review focus
 
@@ -38,8 +36,6 @@ Require a human review for:
 - public contract changes
 - architecture changes
 - operational or deployment changes
-- Telegram/Discord token routing
-- moderation, timeout, publishing, or reporting behavior in public channels
 
 ## Review outputs
 
@@ -52,4 +48,4 @@ Review should end with one of four outcomes:
 
 ## Findings format
 
-Use `rules/docs/templates/PR_REVIEW_TEMPLATE.md` to capture review findings consistently.
+Use `docs/templates/PR_REVIEW_TEMPLATE.md` to capture review findings consistently.

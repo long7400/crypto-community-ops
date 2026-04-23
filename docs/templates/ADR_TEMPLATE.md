@@ -1,8 +1,6 @@
 # ADR Template
 
 Use this for architectural or product-technical decisions that should survive beyond a single task.
-For this repo, ADRs are appropriate for decisions that change agent boundaries,
-runtime event contracts, token routing, storage strategy, or publishing/moderation behavior.
 
 ## Title
 

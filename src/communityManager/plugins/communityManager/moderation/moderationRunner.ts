@@ -24,7 +24,10 @@ export class ModerationRunner {
   constructor(private readonly runtime: IAgentRuntime) {}
 
   async handleMemory(memory: Memory): Promise<void> {
-    const message = normalizeTelegramMemoryPayload(memory);
+    const message = normalizeTelegramMemoryPayload(memory, {
+      room: await this.getTelegramRoom(memory),
+      telegramUserId: await this.getTelegramUserId(memory),
+    });
     if (!message || message.channelType === "private" || !message.text.trim()) {
       return;
     }
@@ -168,5 +171,24 @@ export class ModerationRunner {
       return new TelegramModerationAdapter(this.runtime);
     }
     throw new Error(`Unsupported moderation platform: ${platform}`);
+  }
+
+  private async getTelegramRoom(memory: Memory): Promise<any | undefined> {
+    if (!memory.roomId || typeof this.runtime.getRoom !== "function") {
+      return undefined;
+    }
+
+    return await this.runtime.getRoom(memory.roomId as any);
+  }
+
+  private async getTelegramUserId(memory: Memory): Promise<string | undefined> {
+    const entityId = (memory as any).entityId;
+    if (!entityId || typeof this.runtime.getEntityById !== "function") {
+      return undefined;
+    }
+
+    const entity = await this.runtime.getEntityById(entityId as any);
+    const telegramId = (entity as any)?.metadata?.telegram?.id;
+    return telegramId == null ? undefined : String(telegramId);
   }
 }
