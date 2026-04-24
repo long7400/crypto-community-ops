@@ -1,7 +1,6 @@
 import {
   ChannelType,
   createUniqueUuid,
-  type Entity,
   type IAgentRuntime,
   logger,
   type Memory,
@@ -12,6 +11,7 @@ import {
 } from "@elizaos/core";
 import dedent from "dedent";
 import { mergeCommunityModerationSettings } from "./moderation/defaults";
+import { installTelegramEntityMetadataBridge } from "./telegramEntityIdentity";
 import { ServiceType } from "./types";
 
 export class CommunityManagerService extends Service {
@@ -24,6 +24,7 @@ export class CommunityManagerService extends Service {
   constructor(protected runtime: IAgentRuntime) {
     super(runtime);
 
+    installTelegramEntityMetadataBridge(runtime);
     this.addEventListener(runtime);
   }
 

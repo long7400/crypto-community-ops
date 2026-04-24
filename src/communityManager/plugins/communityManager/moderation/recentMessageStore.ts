@@ -1,4 +1,5 @@
 import { createUniqueUuid, type IAgentRuntime, type UUID } from "@elizaos/core";
+import { ensureModerationStorageRoom } from "./storageRoom";
 import type { ModerationMessage } from "./types";
 
 export class RecentMessageStore {
@@ -21,11 +22,21 @@ export class RecentMessageStore {
   }
 
   async record(message: ModerationMessage): Promise<void> {
+    const roomId = this.getRoomId(message);
+    await ensureModerationStorageRoom(this.runtime, {
+      id: roomId,
+      worldId: message.worldId,
+      source: message.platform,
+      channelId: message.channelId,
+      name: "Community moderation recent messages",
+    });
+
     await this.runtime.createMemory(
       {
         agentId: this.runtime.agentId,
         entityId: this.runtime.agentId,
-        roomId: this.getRoomId(message),
+        roomId,
+        worldId: message.worldId,
         content: { type: "COMMUNITY_RECENT_MESSAGE", message },
         createdAt: message.createdAt,
       },
