@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import { normalizeTelegramMessagePayload } from "../src/communityManager/plugins/communityManager/moderation/normalizer";
 import { TelegramModerationAdapter } from "../src/communityManager/plugins/communityManager/moderation/telegramAdapter";
 import { ModerationRunner } from "../src/communityManager/plugins/communityManager/moderation/moderationRunner";
+import { RecentMessageStore } from "../src/communityManager/plugins/communityManager/moderation/recentMessageStore";
 import { telegramModerationEvaluator } from "../src/communityManager/plugins/communityManager/moderation/telegramModerationEvaluator";
 import { callTelegramApi } from "../src/communityManager/plugins/communityManager/moderation/telegramErrors";
 
@@ -207,6 +208,51 @@ describe("telegramModerationEvaluator", () => {
 			telegramModerationEvaluator.validate({} as any, message, {} as any),
 		).resolves.toBe(true);
 		expect(telegramModerationEvaluator.alwaysRun).toBe(true);
+	});
+});
+
+describe("RecentMessageStore", () => {
+	it("should ensure the moderation storage room exists before recording a recent message", async () => {
+		const ensureRoomExists = vi.fn().mockResolvedValue(undefined);
+		const createMemory = vi.fn().mockResolvedValue(undefined);
+		const runtime: any = {
+			agentId: "agent-id",
+			ensureRoomExists,
+			createMemory,
+		};
+
+		await new RecentMessageStore(runtime).record({
+			platform: "telegram",
+			communityId: "-100123",
+			channelId: "-100123",
+			channelType: "supergroup",
+			roomId: "room-1",
+			worldId: "world-1",
+			messageId: "42",
+			userId: "777",
+			displayName: "Ada",
+			text: "gm builders",
+			createdAt: 1710000000000,
+		});
+
+		expect(ensureRoomExists).toHaveBeenCalledWith(
+			expect.objectContaining({
+				source: "telegram",
+				channelId: "-100123",
+				worldId: "world-1",
+				metadata: { purpose: "community-moderation-storage" },
+			}),
+		);
+		expect(createMemory).toHaveBeenCalledWith(
+			expect.objectContaining({
+				roomId: ensureRoomExists.mock.calls[0][0].id,
+				worldId: "world-1",
+				content: expect.objectContaining({
+					type: "COMMUNITY_RECENT_MESSAGE",
+				}),
+			}),
+			"messages",
+		);
 	});
 });
 

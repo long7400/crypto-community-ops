@@ -1,16 +1,27 @@
 import { createUniqueUuid, type IAgentRuntime, type UUID } from "@elizaos/core";
+import { ensureModerationStorageRoom } from "./storageRoom";
 import type { ModerationAuditRecord } from "./types";
 
 export class ModerationAuditStore {
   constructor(private readonly runtime: IAgentRuntime) {}
 
   async record(record: ModerationAuditRecord): Promise<void> {
+    const roomId = this.getAuditRoomId(record);
+    await ensureModerationStorageRoom(this.runtime, {
+      id: roomId,
+      worldId: record.worldId,
+      source: record.platform,
+      channelId: record.channelId,
+      name: "Community moderation audit",
+    });
+
     await this.runtime.createMemory(
       {
         id: createUniqueUuid(this.runtime, record.id),
         agentId: this.runtime.agentId,
         entityId: this.runtime.agentId,
-        roomId: this.getAuditRoomId(record),
+        roomId,
+        worldId: record.worldId,
         content: {
           type: "COMMUNITY_MODERATION_AUDIT",
           ...record,

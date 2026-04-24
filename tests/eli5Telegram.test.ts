@@ -235,16 +235,20 @@ describe("Eli5 Telegram E2E", () => {
   });
 
   it("should greet a new Telegram member when legacy settings enable greetings", async () => {
-    const { runtime, eventHandlers } = createTelegramRuntimeMock({
-      adapter: {
-        getWorld: vi.fn().mockResolvedValue(
-          createTelegramWorld({
-            SHOULD_GREET_NEW_PERSONS: { value: true },
-            GREETING_MESSAGE: { value: "Be warm and brief." },
-          }),
-        ),
-      },
-    });
+    const { runtime, eventHandlers, telegramSendMessage } =
+      createTelegramRuntimeMock({
+        adapter: {
+          getWorld: vi.fn().mockResolvedValue(
+            createTelegramWorld({
+              SHOULD_GREET_NEW_PERSONS: { value: true },
+              GREETING_MESSAGE: { value: "Be warm and brief." },
+            }),
+          ),
+        },
+      });
+    runtime.getRooms.mockResolvedValue([
+      { source: "telegram", channelId: "-100777" },
+    ]);
     const ctx = {
       chat: { id: -100777 },
       reply: vi.fn().mockResolvedValue(undefined),
@@ -268,7 +272,9 @@ describe("Eli5 Telegram E2E", () => {
       ctx,
     });
 
-    expect(ctx.reply).toHaveBeenCalledWith("Welcome Ada Lovelace!");
+    expect(telegramSendMessage).toHaveBeenCalledWith("-100777", {
+      text: "Welcome Ada Lovelace!",
+    });
     const expectedRoomId = createUniqueUuid(runtime, ctx.chat.id.toString());
 
     expect(runtime.ensureRoomExists).toHaveBeenCalledWith(
@@ -396,30 +402,35 @@ describe("Eli5 Telegram E2E", () => {
   });
 
   it("should use COMMUNITY_MODERATION greeting settings when moderation greeting is configured", async () => {
-    const { runtime, eventHandlers } = createTelegramRuntimeMock({
-      adapter: {
-        getWorld: vi.fn().mockResolvedValue(
-          createTelegramWorld({
-            COMMUNITY_MODERATION: {
-              value: {
-                platforms: {
-                  telegram: {
-                    enabled: true,
-                    greeting: {
+    const { runtime, eventHandlers, telegramSendMessage } =
+      createTelegramRuntimeMock({
+        adapter: {
+          getWorld: vi.fn().mockResolvedValue(
+            createTelegramWorld({
+              COMMUNITY_MODERATION: {
+                value: {
+                  platforms: {
+                    telegram: {
                       enabled: true,
-                      template: "GM {displayName}, welcome to the builders room.",
+                      greeting: {
+                        enabled: true,
+                        template:
+                          "GM {displayName}, welcome to the builders room.",
+                      },
                     },
                   },
-                },
-                moderation: {
-                  enabled: true,
+                  moderation: {
+                    enabled: true,
+                  },
                 },
               },
-            },
-          }),
-        ),
-      },
-    });
+            }),
+          ),
+        },
+      });
+    runtime.getRooms.mockResolvedValue([
+      { source: "telegram", channelId: "-100779" },
+    ]);
     const ctx = {
       chat: { id: -100779 },
       reply: vi.fn().mockResolvedValue(undefined),
@@ -439,8 +450,43 @@ describe("Eli5 Telegram E2E", () => {
       ctx,
     });
 
-    expect(ctx.reply).toHaveBeenCalledWith(
-      "GM Ada Lovelace, welcome to the builders room.",
+    expect(telegramSendMessage).toHaveBeenCalledWith("-100779", {
+      text: "GM Ada Lovelace, welcome to the builders room.",
+    });
+  });
+
+  it("bridges Telegram entity metadata when Telegram syncs a connection", async () => {
+    const entity = {
+      id: "entity-1",
+      names: [],
+      metadata: {
+        telegram: {
+          id: "777",
+          name: "Yui",
+          userName: "yuiizi",
+        },
+      },
+    };
+    const { runtime } = createTelegramRuntimeMock({
+      getEntityById: vi.fn().mockResolvedValue(entity),
+    });
+
+    await CommunityManagerService.start(runtime);
+
+    await runtime.ensureConnection({
+      entityId: "entity-1",
+      source: "telegram",
+    });
+
+    expect(runtime.updateEntity).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "entity-1",
+        names: ["Yui", "yuiizi"],
+        metadata: expect.objectContaining({
+          name: "Yui",
+          username: "yuiizi",
+        }),
+      }),
     );
   });
 

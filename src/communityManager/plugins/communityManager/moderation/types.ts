@@ -117,6 +117,7 @@ export type ViolationState = {
   communityId: string;
   channelId: string;
   threadId?: string;
+  worldId: string;
   userId: string;
   category: ModerationCategory;
   count: number;
@@ -141,6 +142,7 @@ export type ModerationAuditRecord = {
   communityId: string;
   channelId: string;
   threadId?: string;
+  worldId: string;
   userId: string;
   messageId: string;
   category: ModerationCategory | "safe";

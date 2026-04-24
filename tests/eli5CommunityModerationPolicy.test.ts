@@ -251,6 +251,7 @@ describe("ModerationAuditStore", () => {
 			communityId: "-100123",
 			channelId: "-100123",
 			threadId: "123",
+			worldId: "world-1",
 			userId: "777",
 			messageId: "42",
 			category: "spam",

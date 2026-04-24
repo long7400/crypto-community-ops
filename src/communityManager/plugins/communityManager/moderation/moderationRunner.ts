@@ -101,6 +101,7 @@ export class ModerationRunner {
       communityId: message.communityId,
       channelId: message.channelId,
       threadId: message.threadId,
+      worldId: message.worldId,
       userId: message.userId,
       category:
         classification.category === "safe" ? "spam" : classification.category,
@@ -137,6 +138,7 @@ export class ModerationRunner {
       communityId: message.communityId,
       channelId: message.channelId,
       threadId: message.threadId,
+      worldId: message.worldId,
       userId: message.userId,
       messageId: message.messageId,
       category: decision.category,

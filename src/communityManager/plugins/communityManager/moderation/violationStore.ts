@@ -1,4 +1,5 @@
 import { createUniqueUuid, type IAgentRuntime, type UUID } from "@elizaos/core";
+import { ensureModerationStorageRoom } from "./storageRoom";
 import type { ModerationCategory, ViolationState } from "./types";
 
 type ViolationKey = {
@@ -6,6 +7,7 @@ type ViolationKey = {
   communityId: string;
   channelId: string;
   threadId?: string;
+  worldId: string;
   userId: string;
   category: ModerationCategory;
 };
@@ -43,6 +45,7 @@ export class ModerationViolationStore {
         communityId: key.communityId,
         channelId: key.channelId,
         threadId: key.threadId,
+        worldId: key.worldId,
         userId: key.userId,
         category: key.category,
         count: 0,
@@ -57,11 +60,21 @@ export class ModerationViolationStore {
       count: state.count + 1,
       lastViolationAt: Date.now(),
     };
+    const roomId = this.getStorageRoomId(state);
+    await ensureModerationStorageRoom(this.runtime, {
+      id: roomId,
+      worldId: state.worldId,
+      source: state.platform,
+      channelId: state.channelId,
+      name: "Community moderation violations",
+    });
+
     await this.runtime.createMemory(
       {
         agentId: this.runtime.agentId,
         entityId: this.runtime.agentId,
-        roomId: this.getStorageRoomId(state),
+        roomId,
+        worldId: state.worldId,
         content: {
           type: "COMMUNITY_VIOLATION_STATE",
           platform: state.platform,
